@@ -1,0 +1,32 @@
+# Python and Jupyter artifacts
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.pytest_cache/
+
+# Data and Models (CRITICAL)
+data/raw/cme/
+data/raw/deribit/
+data/raw/hyperliquid/
+data/raw/auxiliary/
+data/cleaned/
+data/surfaces/
+*.parquet
+*.csv
+*.h5
+
+# LaTeX Build Files
+thesis/*.aux
+thesis/*.log
+thesis/*.out
+thesis/*.bbl
+thesis/*.blg
+thesis/*.toc
+thesis/*.fls
+thesis/*.fdb_latexmk
+thesis/*.synctex.gz
+
+# Environment
+.env
+venv/
+env/
