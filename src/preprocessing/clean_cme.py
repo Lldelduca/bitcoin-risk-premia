@@ -1,108 +1,175 @@
-# src/preprocessing/clean_cme.py
+import sys
 import pandas as pd
 import numpy as np
-import sys
 from src.config import get_path, FILTERS
 from src.preprocessing import filters
 
 def convert_csv_to_parquet():
-    """Converts CSV to Parquet and forces loud errors if files are missing."""
+    """One-time conversion of the 740MB CSV to Parquet for fast loading."""
     csv_path = get_path('raw_cme_csv')
     parquet_path = get_path('raw_cme_parquet')
-    
-    print(f"Checking for Parquet file at: {parquet_path}")
-    
-    if not parquet_path.exists():
-        print(f"Parquet not found. Looking for CSV at: {csv_path}")
-        if csv_path.exists():
-            print(f"Found CSV! Converting to Parquet (this takes ~30 seconds)...")
-            df = pd.read_csv(csv_path, low_memory=False)
-            df.to_parquet(parquet_path, index=False)
-            print("Conversion complete!")
-        else:
-            print("\n" + "="*50)
-            print("❌ ERROR: RAW CSV FILE NOT FOUND!")
-            print(f"Please make sure your CSV is named exactly: {csv_path.name}")
-            print(f"And is located exactly in this folder: {csv_path.parent}")
-            print("="*50 + "\n")
-            sys.exit(1) # Stops the script immediately
-    else:
-        print("Parquet file already exists. Skipping conversion.")
 
-def load_and_prep_zero_curve():
-    """Loads the FRED/OptionMetrics zero curve."""
+    if parquet_path.exists():
+        print(f"  Parquet already exists at {parquet_path.name}. Skipping conversion.")
+        return
+
+    if not csv_path.exists():
+        print(f"\n{'='*60}")
+        print(f"  ERROR: Raw CSV not found at: {csv_path}")
+        print(f"  Place the IvyDB file in: {csv_path.parent}")
+        print(f"{'='*60}\n")
+        sys.exit(1)
+
+    print(f"  Converting CSV → Parquet (this takes ~30s for 740MB)...")
+    df = pd.read_csv(csv_path, low_memory=False)
+    df.to_parquet(parquet_path, index=False)
+    print(f"  Done. Parquet saved to {parquet_path.name}")
+
+
+def load_zero_curve() -> pd.DataFrame:
+    """Loads the OptionMetrics USD zero-coupon yield curve."""
     zc_path = get_path('zero_curve')
     if not zc_path.exists():
-        print(f"\n❌ ERROR: ZERO CURVE CSV NOT FOUND AT {zc_path}\n")
+        print(f"\n  ERROR: Zero curve not found at {zc_path}\n")
         sys.exit(1)
-        
+
     df_zc = pd.read_csv(zc_path, parse_dates=['date'])
     df_zc = df_zc[df_zc['currency'] == 'USD'].copy()
-    df_zc = df_zc.sort_values(['date', 'days'])
-    return df_zc
+    return df_zc.sort_values(['date', 'days'])
+
 
 def process_cme_data():
-    # 1. Convert CSV to Parquet (Will stop the script if CSV is missing)
+    """Main cleaning pipeline for CME Bitcoin futures options."""
+
+    print("\n" + "="*60)
+    print("  CME Bitcoin Options Cleaning Pipeline")
+    print("="*60)
+
+    # ── Step 0: CSV → Parquet ──────────────────────────────────
     convert_csv_to_parquet()
-    
-    print("Loading CME Parquet into memory...")
+
+    print("\n  Loading CME Parquet into memory...")
     df = pd.read_parquet(get_path('raw_cme_parquet'))
-    
-    # 2. Date and Time to Maturity calculations
+    n_raw = len(df)
+    print(f"  Raw rows loaded: {n_raw:,}")
+
+    # ── Step 1: Parse dates, compute DTE and τ ─────────────────
     df['date'] = pd.to_datetime(df['date'])
     df['expiration'] = pd.to_datetime(df['expiration'])
     df['days_to_expiry'] = (df['expiration'] - df['date']).dt.days
-    df['tau'] = df['days_to_expiry'] / 365.25  # Annualized time to maturity
+    df['tau'] = df['days_to_expiry'] / 365.25
 
-    # 3. Extract true strike and forward price based on IvyDB schema
-    df['strike'] = df['strike'] / df['strikemultiplier']
-    df['forward_price'] = df['futuresettlementprice'] 
-    
-    # Calculate log-moneyness (κ = ln(K / F_t))
+    # Note: strikemultiplier is always 1.0 for BTC futures options,
+    # but we apply it for correctness in case of future data changes.
+    df['strike'] = df['strike'] * df['strikemultiplier']
+
+    # Preliminary forward and moneyness (refined after PCP in Step 4)
+    df['forward_price'] = df['futuresettlementprice']
     df['log_moneyness'] = np.log(df['strike'] / df['forward_price'])
 
-    # 4. Merge Risk-Free Rate
-    print("Merging Zero Curve...")
-    df_zc = load_and_prep_zero_curve()
-    df_zc = df_zc.sort_values('days')
+    # ── Step 2: Merge risk-free rate from zero curve ───────────
+    print("  Merging zero curve...")
+    df_zc = load_zero_curve()
+
     df = df.sort_values('days_to_expiry')
-    
+    df_zc = df_zc.sort_values('days')
+
     df = pd.merge_asof(
-        df, 
-        df_zc[['date', 'days', 'rate']], 
-        by='date', 
-        left_on='days_to_expiry', 
-        right_on='days', 
+        df,
+        df_zc[['date', 'days', 'rate']],
+        by='date',
+        left_on='days_to_expiry',
+        right_on='days',
         direction='nearest'
     )
     df.rename(columns={'rate': 'risk_free_rate'}, inplace=True)
-    df.drop(columns=['days'], inplace=True)
+    df.drop(columns=['days'], inplace=True, errors='ignore')
 
-    df = df.sort_values(['date', 'days_to_expiry', 'strike']).reset_index(drop=True)
+    # ── Step 3: Remove IvyDB sentinel values ───────────────────
+    # Per IvyDB manual: -99.99 = missing/uncalculated for IV,
+    # delta, bid, offer, etc. Must be removed BEFORE any filter
+    # that references these fields.
+    print("\n  --- Sequential Filter Attrition ---")
+    print(f"  {'Step':<40} {'Rows':>10} {'Dropped':>10}")
+    print(f"  {'-'*60}")
+    print(f"  {'Raw data':<40} {len(df):>10,}")
 
-    # 5. Apply Filters sequentially and track attrition
-    print("\n--- Applying Mathematical Filters ---")
-    print(f"Initial raw rows: {len(df):,}")
-    
-    df = filters.filter_maturity(df, min_tau_days=FILTERS['min_tau_days'], max_tau_days=FILTERS['max_tau_days'])
-    print(f"After Maturity filter: {len(df):,}")
+    n_before = len(df)
+    df = filters.remove_ivydb_sentinels(df)
+    print(f"  {'Remove IvyDB sentinels (-99.99)':<40} {len(df):>10,} {n_before - len(df):>10,}")
 
-    df = filters.filter_static_arbitrage(df)
-    print(f"After Arbitrage filter: {len(df):,}")
-    
-    df = filters.apply_liquidity_filters(df, min_oi=FILTERS['min_open_interest'], min_vol=FILTERS['min_volume'])
-    print(f"After Liquidity filter: {len(df):,}")
+    # ── Step 4: Compute forward via put-call parity ────────────
+    # Uses ATM call-put pairs: F = K_ATM + e^(rτ)(C_ATM - P_ATM)
+    # Falls back to futures settlement where ATM pairs unavailable.
+    df = filters.compute_forward_via_put_call_parity(df)
 
-    df = filters.filter_out_of_the_money(df)
-    print(f"After OTM filter: {len(df):,}")
+    # ── Step 5: Apply sequential filters ───────────────────────
+    steps = [
+        ("Maturity filter", lambda d: filters.filter_maturity(
+            d, min_dte=FILTERS['min_tau_days'], max_dte=FILTERS['max_tau_days']
+        )),
+        ("Static no-arbitrage bounds", filters.filter_static_arbitrage),
+        ("Liquidity (OI≥1 or Vol≥1)", lambda d: filters.filter_liquidity(
+            d, min_oi=FILTERS['min_open_interest'], min_vol=FILTERS.get('min_volume', 0)
+        )),
+        ("OTM only (K≥F calls, K≤F puts)", filters.filter_out_of_the_money),
+        ("Moneyness trim |κ| ≤ 3√τ", lambda d: filters.trim_extreme_moneyness(
+            d, coeff=FILTERS['moneyness_trim']
+        )),
+        ("IV bounds [0.01, 5.0]", filters.filter_iv_bounds),
+    ]
 
-    df = filters.trim_extreme_moneyness(df, multiplier=FILTERS['moneyness_trim'])
-    print(f"After Extreme Moneyness Trim: {len(df):,}")
+    for step_name, step_fn in steps:
+        n_before = len(df)
+        df = step_fn(df)
+        print(f"  {step_name:<40} {len(df):>10,} {n_before - len(df):>10,}")
 
-    # 6. Save cleaned dataset
+    # ── Step 6: Final cleanup and save ─────────────────────────
+    df = df.sort_values(['date', 'expiration', 'strike']).reset_index(drop=True)
+
+    # Select columns for output
+    output_cols = [
+        'date', 'expiration', 'days_to_expiry', 'tau',
+        'strike', 'callput', 'forward_price', 'log_moneyness',
+        'settlementprice', 'bid', 'offer',
+        'impliedvolatility', 'delta', 'gamma', 'vega', 'theta',
+        'volume', 'openinterest', 'risk_free_rate',
+        'futuresettlementprice', 'optionid', 'exercisestyle'
+    ]
+    # Keep only columns that exist (in case some were dropped)
+    output_cols = [c for c in output_cols if c in df.columns]
+    df = df[output_cols]
+
     out_path = get_path('cleaned_cme')
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(out_path, index=False)
-    print(f"\n✅ SUCCESS: Cleaned CME data saved to {out_path}")
+
+    # ── Summary statistics ─────────────────────────────────────
+    print(f"\n  {'='*60}")
+    print(f"  CLEANING COMPLETE")
+    print(f"  {'='*60}")
+    print(f"  Final rows:      {len(df):>10,}")
+    print(f"  Retention rate:   {len(df)/n_raw:>9.1%}")
+    print(f"  Date range:       {df['date'].min().date()} to {df['date'].max().date()}")
+    print(f"  Unique dates:     {df['date'].nunique():>10,}")
+    print(f"  Saved to:         {out_path}")
+
+    # Per-year breakdown
+    print(f"\n  Rows per year:")
+    yearly = df.groupby(df['date'].dt.year).size()
+    for year, count in yearly.items():
+        print(f"    {year}: {count:>8,}")
+
+    # Daily stats
+    daily = df.groupby('date').size()
+    print(f"\n  Contracts per day:")
+    print(f"    Median: {daily.median():.0f}")
+    print(f"    Min:    {daily.min()}")
+    print(f"    Max:    {daily.max()}")
+    print(f"    Mean:   {daily.mean():.1f}")
+
+    return df
+
 
 if __name__ == "__main__":
     process_cme_data()

@@ -16,6 +16,6 @@ paths:
 filters:
   min_volume: 0              # Excludes zero-volume illiquidity
   min_open_interest: 1       # Drops dead/stale contracts
-  min_tau_days: 7            # Drops options < 1 week to expiry
+  min_tau_days: 10           # Drops options < 1 week to expiry
   max_tau_days: 180          # Focuses on liquid maturities (approx 6 months)
   moneyness_trim: 3.0        # Keeps |k| <= 3 * sqrt(tau)
