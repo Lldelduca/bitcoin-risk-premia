@@ -4,18 +4,30 @@ paths:
   raw_cme_parquet: "data/raw/cme/btc_future_options_data.parquet"
   zero_curve: "data/raw/cme/Zero_curve_USD.csv"
   cleaned_cme: "data/cleaned/cme_options_clean.parquet"
-  
+
   # Deribit Paths
   raw_deribit_dir: "data/raw/deribit/"
   cleaned_deribit: "data/cleaned/deribit_options_clean.parquet"
-  
+
   # Auxiliary Paths
   raw_hyperliquid_dir: "data/raw/hyperliquid/"
   cleaned_auxiliary: "data/cleaned/auxiliary_panel.parquet"
 
-filters:
-  min_volume: 0              # Excludes zero-volume illiquidity
-  min_open_interest: 1       # Drops dead/stale contracts
-  min_tau_days: 10           # Drops options < 1 week to expiry
-  max_tau_days: 180          # Focuses on liquid maturities (approx 6 months)
-  moneyness_trim: 3.0        # Keeps |k| <= 3 * sqrt(tau)
+# Filters common to both datasets (applied before dataset-specific filters)
+filters_shared:
+  min_tau_days: 10           # Drops options < 10 days to expiry
+  max_tau_days: 180          # Focuses on liquid maturities
+  moneyness_trim: 3.0        # Keeps |κ| ≤ 3 * sqrt(τ)
+  min_iv: 0.01               # 1% annualized lower bound
+  max_iv: 5.0                # 500% annualized upper bound
+
+# CME-specific filters (transaction-level quote data)
+filters_cme:
+  min_volume: 0              # Used in OR logic with min_open_interest
+  min_open_interest: 1       # Drops dead/stale contracts (OR vol≥1)
+  ivydb_sentinel: -99.99     # IvyDB missing-value convention
+
+# Deribit-specific filters (transaction-level trade data)
+filters_deribit:
+  min_amount: 0.0            # Drop zero-quantity transactions (Grith filter)
+  min_n_trades_per_slice: 1  # Drop daily slices with < N trades
