@@ -1,3 +1,8 @@
+# Sample window
+sample:
+  start_date: "2020-01-13"
+  end_date: "2023-08-31"
+
 paths:
   # CME Paths
   raw_cme_csv: "data/raw/cme/btc_future_options_data.csv"
@@ -29,5 +34,16 @@ filters_cme:
 
 # Deribit-specific filters (transaction-level trade data)
 filters_deribit:
-  min_amount: 0.0            # Drop zero-quantity transactions (Grith filter)
+  min_amount: 0.0            # Drop zero-quantity transactions
   min_n_trades_per_slice: 1  # Drop daily slices with < N trades
+
+# SSVI fitting parameters
+ssvi:
+  min_options_per_slice: 4
+
+# Tensor PCA
+tensor_grid:
+  t_grid_days: [14, 21, 27, 35, 45, 60, 90, 120, 180]
+  k_grid_min: -0.60
+  k_grid_max: 0.70
+  k_grid_points: 27
