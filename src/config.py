@@ -28,3 +28,6 @@ TENSOR_GRID = cfg.get('tensor_grid', {})
 def get_path(path_key: str) -> Path:
     """Returns absolute path from config key."""
     return BASE_DIR / PATHS[path_key]
+
+# API keys for FRED); not committed to version control
+API_KEYS = cfg.get("api_keys", {})
