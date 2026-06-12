@@ -10,13 +10,15 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from src.config import get_path, SAMPLE
+from src.config import get_path, SAMPLE, get_return_grid
 
 from src.pricing_kernel.conditional_kernel import (
     estimate_conditional_kernel,
     evaluate_kernel_at_terciles,
     get_coefficient_timeseries,
 )
+
+from src.inference.bootstrap_inference import block_bootstrap_mean_bands
 
 CLEAN_DIR = Path(get_path("cleaned_cme")).parent
 SURFACES_DIR = CLEAN_DIR.parent / "surfaces"
@@ -28,7 +30,7 @@ TAB_DIR = Path("results") / "phase3" / "tables"
 for d in [PHASE3_DIR, FIG_DIR, TAB_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
-R_GRID = np.linspace(0.40, 2.00, 1000)
+R_GRID = get_return_grid()
 
 SPECS = {
     "macro": "Z_macro.parquet",
@@ -198,7 +200,7 @@ def run_phase3():
                     "kl_total": result.kl_total, "kl_mean": result.kl_mean,
                     "converged": result.converged,
                 }
-                for cn in ["a", "b", "c", "d"]:
+                for cn in ["b", "c", "d"]:
                     row[f"mean_{cn}"] = coeffs[cn].mean()
                     row[f"std_{cn}"] = coeffs[cn].std()
                 for tn in ["low", "mid", "high"]:
@@ -210,7 +212,7 @@ def run_phase3():
                 np.savez(
                     PHASE3_DIR / f"phase3_{key}.npz",
                     theta=result.theta, dates=dates,
-                    coeffs_a=coeffs["a"], coeffs_b=coeffs["b"],
+                    coeffs_b=coeffs["b"],
                     coeffs_c=coeffs["c"], coeffs_d=coeffs["d"],
                 )
 
@@ -261,8 +263,8 @@ def _plot_kernel_terciles(result, terciles, venue, spec_name):
     plt.close()
 
 def _plot_coefficient_timeseries(coeffs, dates, venue, spec_name):
-    fig, axes = plt.subplots(4, 1, figsize=(13, 8), sharex=True)
-    labels = [("a", "$a_t$ (level)"), ("b", "$b_t$ (slope)"),
+    fig, axes = plt.subplots(3, 1, figsize=(13, 7), sharex=True)
+    labels = [("b", "$b_t$ (slope)"),
               ("c", "$c_t$ (curvature)"), ("d", "$d_t$ (cubic)")]
     for ax, (name, label) in zip(axes, labels):
         ax.plot(dates, coeffs[name], lw=0.8, color="C0")
@@ -290,20 +292,23 @@ def _compute_and_plot_mfk(venue_rnds):
         q_d = np.maximum(der_rnds[row["idx_d"]], 1e-20)
         mfk_daily.append(np.log(q_c / q_d))
 
-    mfk_mean = np.mean(mfk_daily, axis=0)
-    mfk_std = np.std(mfk_daily, axis=0)
-    n = len(mfk_daily)
-    print(f"  MFK over {n} matched days.")
+    # Pointwise inference
+    psi_mat = np.stack(mfk_daily)
+    bands = block_bootstrap_mean_bands(psi_mat, block_length=27, B=1000, seed=42)
+    mfk_mean = bands["mean"]
+    mfk_std = bands["se_boot"]
+    n = bands["n_days"]
+    print(f"  MFK over {n} matched days (95% block-bootstrap bands, "
+          f"block={bands['block_length']}, B={bands['B']}).")
 
     np.savez(PHASE3_DIR / "mfk_unconditional.npz",
-             R_grid=R_GRID, mfk_mean=mfk_mean, mfk_std=mfk_std, n_days=n)
+             R_grid=R_GRID, mfk_mean=mfk_mean, mfk_std=mfk_std, n_days=n,
+             mfk_lo=bands["lo"], mfk_hi=bands["hi"])
 
     fig, ax = plt.subplots(figsize=(12, 5))
     ax.plot(R_GRID, mfk_mean, "k-", lw=1.5, label=r"$\bar{\Psi}(R)$")
-    ax.fill_between(R_GRID,
-                     mfk_mean - 1.96 * mfk_std / np.sqrt(n),
-                     mfk_mean + 1.96 * mfk_std / np.sqrt(n),
-                     alpha=0.2, color="gray", label="95% CI")
+    ax.fill_between(R_GRID, bands["lo"], bands["hi"],
+                     alpha=0.2, color="gray", label="95% block-bootstrap CI")
     ax.axhline(0, color="black", lw=0.5)
     ax.axvline(1.0, color="gray", lw=0.5, ls=":")
     ax.axvspan(R_GRID[0], 0.90, alpha=0.05, color="red")
