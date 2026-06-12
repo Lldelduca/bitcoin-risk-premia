@@ -31,3 +31,11 @@ def get_path(path_key: str) -> Path:
 
 # API keys for FRED); not committed to version control
 API_KEYS = cfg.get("api_keys", {})
+
+# Shared gross-return grid for Phases 2, 3, and 5
+RETURN_GRID = cfg.get('return_grid', {'min': 0.40, 'max': 2.00, 'points': 1000})
+
+def get_return_grid():
+    import numpy as np
+    return np.linspace(float(RETURN_GRID['min']), float(RETURN_GRID['max']),
+                       int(RETURN_GRID['points']))

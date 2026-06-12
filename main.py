@@ -1,0 +1,440 @@
+"""
+Master Pipeline Runner
+
+Runs the full empirical pipeline in dependency order with checkpoints, wall-clock timing, and verification guards at each stage. 
+Designed to be kicked off once and left to run; each phase prints a clear banner so you can scroll through the log afterward.
+
+Usage:
+    python main.py                    # full pipeline, all phases
+    python main.py --from 4           # resume from Phase 4 onward
+    python main.py --only 1b 4        # run only Phase 1b and Phase 4
+    python main.py --skip-bootstrap   # skip the heavy Phase 3 bootstrap
+    python main.py --bootstrap-B 200  # set bootstrap replicates (default 200)
+    python main.py --bootstrap-workers 4  # parallel workers (default 6)
+
+Phase dependency graph:
+    1a  SSVI surface fitting          (reads: cleaned options)
+    1b  RND extraction                (reads: ssvi_params.parquet)
+    1c  CP tensor decomposition       (reads: ssvi_params.parquet)
+    2   Conditioning vectors          (reads: CP factors, auxiliary panel)
+    3   Physical density + EP decomp  (reads: RNDs, spot prices)
+    4   Conditional pricing kernel    (reads: RNDs, physical density, Z vectors)
+    4b  Phase 3 bootstrap [optional]  (reads: Phase 4 theta, RNDs, Z vectors)
+    5   BKM / CL20 decomposition      (reads: ssvi_params.parquet, Z vectors)
+    6   Cross-venue analysis          (reads: RNDs, cumulant premia, Z vectors)
+"""
+
+import argparse
+import sys
+import time
+import traceback
+from datetime import datetime
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+# Helpers
+LOG_DIR = Path("results") / "pipeline_logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+class PhaseTimer:
+
+    def __init__(self, name, manifest):
+        self.name = name
+        self.manifest = manifest
+
+    def __enter__(self):
+        self.t0 = time.time()
+        hdr = f"  {self.name}  "
+        print(f"\n{'=' * 70}")
+        print(f"{'=' * 70}")
+        print(f"{hdr:=^70s}")
+        print(f"{'=' * 70}")
+        print(f"  Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"{'=' * 70}\n")
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        dt = time.time() - self.t0
+        status = "OK" if exc_type is None else "FAILED"
+        self.manifest.append({
+            "phase": self.name,
+            "status": status,
+            "seconds": round(dt, 1),
+            "error": str(exc_val) if exc_val else "",
+        })
+        if exc_type is None:
+            print(f"\n  [{self.name}] completed in {_fmt_time(dt)}")
+        else:
+            print(f"\n  [{self.name}] FAILED after {_fmt_time(dt)}")
+            traceback.print_exception(exc_type, exc_val, exc_tb)
+        # Never suppress exceptions — the caller decides whether to continue
+        return False
+
+def _fmt_time(s):
+    if s < 60:
+        return f"{s:.1f}s"
+    m, s = divmod(s, 60)
+    if m < 60:
+        return f"{int(m)}m {int(s)}s"
+    h, m = divmod(m, 60)
+    return f"{int(h)}h {int(m)}m {int(s)}s"
+
+def _check_file(path, label=""):
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(f"  [CHECKPOINT FAILED] {label}: {p} not found")
+    sz = p.stat().st_size
+    if sz == 0:
+        raise ValueError(f"  [CHECKPOINT FAILED] {label}: {p} is empty")
+    if sz < 1024:
+        print(f"  [checkpoint] {label}: {p.name} ({sz} B)")
+    else:
+        print(f"  [checkpoint] {label}: {p.name} ({sz / 1024:.1f} KB)")
+
+def _check_parquet_rows(path, label="", min_rows=1):
+    p = Path(path)
+    _check_file(p, label)
+    n = len(pd.read_parquet(p))
+    if n < min_rows:
+        raise ValueError(f"  [CHECKPOINT FAILED] {label}: {p.name} has {n} rows, expected >= {min_rows}")
+    print(f"  [checkpoint] {label}: {n:,} rows")
+    return n
+
+# Phase runners (each imports at call time to avoid import-order issues)
+def phase_1a_surfaces():
+    """Fit SSVI surfaces for both venues; saves ssvi_params.parquet."""
+    from src.surfaces.fit_surfaces import fit_all_venues
+    fit_all_venues()
+
+    from src.config import get_path
+    surfaces_dir = Path(get_path("cleaned_cme")).parent.parent / "surfaces"
+    _check_parquet_rows(surfaces_dir / "ssvi_params.parquet",
+                        "SSVI params", min_rows=500)
+
+    # Verify the forward column is present (needed by from_params)
+    params = pd.read_parquet(surfaces_dir / "ssvi_params.parquet")
+    if "forward" not in params.columns:
+        print("  [WARN] ssvi_params.parquet lacks the 'forward' column. "
+              "The from_params pathway will fall back to cleaned-data "
+              "forwards — functional but slower. To add the column, the "
+              "updated ssvi.py (Batch 1) must be in place before fitting.")
+    else:
+        n_fwd = params["forward"].notna().sum()
+        print(f"  [checkpoint] 'forward' column present: {n_fwd:,}/{len(params):,} non-null")
+
+def phase_1b_densities():
+    """Extract RNDs from saved surfaces; saves rnd_*.parquet."""
+    from src.surfaces.extract_densities import extract_all_densities
+    extract_all_densities()
+
+    from src.config import get_path
+    surfaces_dir = Path(get_path("cleaned_cme")).parent.parent / "surfaces"
+    for venue in ["CME", "DER"]:
+        _check_parquet_rows(surfaces_dir / f"rnd_{venue}_summary.parquet",
+                            f"{venue} RND summary", min_rows=100)
+
+def phase_1c_tensor():
+    """CP tensor decomposition on both maturity grids with sign convention."""
+    from src.compression.run_tensor_pca import run_tensor_decomposition
+    for grid in ["almeida", "broad"]:
+        print(f"\n{'#' * 60}")
+        print(f"# Grid: {grid}")
+        print(f"{'#' * 60}")
+        run_tensor_decomposition(grid_name=grid)
+
+    from src.config import get_path
+    surfaces_dir = Path(get_path("cleaned_cme")).parent.parent / "surfaces"
+    _check_file(surfaces_dir / "tensor_pca_diagnostics.csv", "Almeida diagnostics")
+    _check_file(surfaces_dir / "Z_IVS.parquet", "Z_IVS factors")
+
+def phase_2_conditioning():
+    """Build conditioning vectors (Z_crypto, Z_macro, Z_full)."""
+    from src.conditioning.build_conditioning_vectors import build_conditioning_vectors
+    build_conditioning_vectors()
+
+    from src.config import get_path
+    cond_dir = Path(get_path("cleaned_cme")).parent.parent / "conditioning"
+    _check_parquet_rows(cond_dir / "Z_crypto.parquet",
+                        "Z_crypto", min_rows=100)
+    # Verify the sign convention held
+    Z = pd.read_parquet(cond_dir / "Z_crypto.parquet")
+    if "Z_IVS_1" in Z.columns and "rv" in Z.columns:
+        rho = Z[["Z_IVS_1", "rv"]].dropna().corr().iloc[0, 1]
+        print(f"  [checkpoint] corr(Z_IVS_1, RV) = {rho:+.3f} (must be > 0)")
+        assert rho > 0, "Sign convention violated — re-run Phase 1c"
+
+def phase_3_ep(spot_data=None):
+    """Physical density estimation and equity premium decomposition."""
+    from src.ep_decomposition.run_phase2 import run_phase2
+    run_phase2()
+
+    phase2_dir = Path("results") / "phase2" / "tables"
+    _check_file(phase2_dir / "ep_decomposition_summary.csv", "EP summary")
+    _check_file(phase2_dir / "ep_bootstrap_ci.csv", "EP bootstrap CIs")
+
+    # Headline check: raw-moment anchor should be in the table
+    boot = pd.read_csv(phase2_dir / "ep_bootstrap_ci.csv")
+    raw = boot[boot["estimator"] == "raw_moment"]
+    if len(raw) == 0:
+        print("  [WARN] No raw_moment row in ep_bootstrap_ci.csv")
+    else:
+        r = raw.iloc[0]
+        print(f"  [checkpoint] raw-moment EP: {r['point']:+.4f} "
+              f"[{r['ci_lo']:+.4f}, {r['ci_hi']:+.4f}]")
+
+def phase_4_kernel():
+    """Conditional pricing kernel estimation (new (b,c,d) parameterization)."""
+    from src.pricing_kernel.run_phase3 import run_phase3
+    run_phase3()
+
+    from src.config import get_path
+    phase3_dir = Path(get_path("cleaned_cme")).parent.parent / "phase3"
+    tab_dir = Path("results") / "phase3" / "tables"
+
+    for venue in ["CME", "DER"]:
+        f = phase3_dir / f"phase3_{venue}_crypto.npz"
+        _check_file(f, f"{venue} kernel (crypto)")
+        d = np.load(f)
+        n_params = len(d["theta"])
+        expected = 3 * (1 + 3)  # (b,c,d) x (const + 3 Z vars for crypto)
+        if n_params != expected:
+            print(f"  [WARN] {venue} theta has {n_params} params, "
+                  f"expected {expected}. Old (a,b,c,d) parameterization?")
+        else:
+            print(f"  [checkpoint] {venue} theta: {n_params} params "
+                  f"(b,c,d parameterization ✓)")
+
+    _check_file(phase3_dir / "mfk_unconditional.npz", "MFK (block-bootstrap bands)")
+
+def phase_4_kernel_bootstrap(B=200, workers=6):
+    """Block-bootstrap CIs for the tercile kernel coefficients.
+    Heavy job — runs after Phase 4 kernel estimation."""
+    from run_phase3_bootstrap import run_bootstrap
+    run_bootstrap(venues=["CME", "DER"], spec_name="crypto", B=B, workers=workers)
+
+    tab_dir = Path("results") / "phase3" / "tables"
+    _check_file(tab_dir / "phase3_bootstrap_ci_crypto.csv", "kernel bootstrap CIs")
+
+    ci = pd.read_csv(tab_dir / "phase3_bootstrap_ci_crypto.csv")
+    c_rows = ci[ci["coef"] == "c"]
+    if len(c_rows):
+        print("\n  Curvature c by tercile [95% CI], P(c < 0):")
+        for _, r in c_rows.iterrows():
+            print(f"    {r['venue']:>4s} {r['tercile']:>4s}: "
+                  f"{r['point']:+.3f} [{r['ci_lo']:+.3f}, {r['ci_hi']:+.3f}]  "
+                  f"P(c<0) = {r['frac_negative']:.3f}")
+
+def phase_5_bkm():
+    """BKM moment extraction and CL20/CL24 cumulant decomposition."""
+    from src.moment_decomposition.run_phase4 import run_phase4
+    run_phase4()
+
+    phase4_dir = Path("results") / "phase4" / "tables"
+    _check_file(phase4_dir / "cyl_decomposition_matched.csv",
+                "CL20 matched-day decomposition (headline)")
+    _check_file(phase4_dir / "kappa_sensitivity.csv",
+                "κ-bound sensitivity")
+
+    # Headline kurtosis share check
+    dec = pd.read_csv(phase4_dir / "cyl_decomposition_matched.csv")
+    for venue in ["CME", "DER"]:
+        row = dec[(dec["venue"] == venue) & (dec["regime"] == "unconditional")]
+        if len(row):
+            sk = row.iloc[0].get("share_kurt", None)
+            if sk is not None:
+                print(f"  [checkpoint] {venue} kurtosis share = {sk:.3f}")
+
+    # κ sensitivity: kurtosis share range across truncation bounds
+    ks = pd.read_csv(phase4_dir / "kappa_sensitivity.csv")
+    for venue in ["CME", "DER"]:
+        v = ks[ks["venue"] == venue]
+        if "share_kurt" in v.columns and len(v) >= 2:
+            lo, hi = v["share_kurt"].min(), v["share_kurt"].max()
+            print(f"  [checkpoint] {venue} kurtosis share range "
+                  f"across κ bounds: [{lo:.3f}, {hi:.3f}]")
+
+def phase_6_cross_venue():
+    """Cross-venue MFK, panel regressions, regional decomposition."""
+    from src.cross_venue.run_phase5 import run_phase5
+    run_phase5()
+
+    tab_dir = Path("results") / "phase5" / "tables"
+    _check_file(tab_dir / "matched_difference_regressions.csv",
+                "Matched-diff regressions (headline)")
+    _check_file(tab_dir / "panel_regressions_dk.csv",
+                "Driscoll-Kraay panel (secondary)")
+
+    # Headline wedge verification
+    diff = pd.read_csv(tab_dir / "matched_difference_regressions.csv")
+    print("\n  Venue wedge (matched-difference, headline):")
+    for dep in ["Pi_2", "Pi_3", "Pi_4"]:
+        r = diff[diff["dep_var"] == dep] if "dep_var" in diff.columns else pd.DataFrame()
+        if len(r):
+            row = r.iloc[0]
+            p_val = row.get("pvalue_const", row.get("pvalue_0", None))
+            coef = row.get("coef_const", row.get("coef_0", None))
+            if coef is not None:
+                sig = "***" if p_val and p_val < 0.001 else ("**" if p_val and p_val < 0.01 else "")
+                print(f"    {dep}: β = {coef:+.5f}{sig}")
+
+
+# Orchestrator
+PHASE_ORDER = [
+    ("1a", "SSVI Surface Fitting",            phase_1a_surfaces),
+    ("1b", "RND Extraction (Figlewski tails)", phase_1b_densities),
+    ("1c", "CP Tensor Decomposition",          phase_1c_tensor),
+    ("2",  "Conditioning Vectors",             phase_2_conditioning),
+    ("3",  "Physical Density & EP Decomp",     phase_3_ep),
+    ("4",  "Conditional Pricing Kernel",       phase_4_kernel),
+    ("4b", "Kernel Bootstrap (heavy)",         None),  # special handling
+    ("5",  "BKM / CL20 Decomposition",        phase_5_bkm),
+    ("6",  "Cross-Venue Analysis",             phase_6_cross_venue),
+]
+
+PHASE_LABELS = {tag: name for tag, name, _ in PHASE_ORDER}
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Run the full Bitcoin risk-premia pipeline.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python main.py                        # full pipeline
+  python main.py --from 3               # resume from Phase 3 (EP)
+  python main.py --only 5 6             # run only Phases 5 and 6
+  python main.py --skip-bootstrap       # skip the heavy kernel bootstrap
+  python main.py --bootstrap-B 50       # quick bootstrap (50 replicates)
+  python main.py --skip 1a 1b 1c        # skip surface fitting & RNDs
+        """,
+    )
+    parser.add_argument("--from", dest="from_phase", default=None,
+                        help="Start from this phase (inclusive)")
+    parser.add_argument("--only", nargs="+", default=None,
+                        help="Run only these phases")
+    parser.add_argument("--skip", nargs="+", default=None,
+                        help="Skip these phases")
+    parser.add_argument("--skip-bootstrap", action="store_true",
+                        help="Skip the Phase 4b kernel bootstrap")
+    parser.add_argument("--bootstrap-B", type=int, default=200,
+                        help="Number of bootstrap replicates (default 200)")
+    parser.add_argument("--bootstrap-workers", type=int, default=6,
+                        help="Parallel workers for bootstrap (default 6)")
+    parser.add_argument("--continue-on-error", action="store_true",
+                        help="Continue to the next phase on failure "
+                             "(default: abort)")
+    args = parser.parse_args()
+
+    # Resolve which phases to run
+    all_tags = [tag for tag, _, _ in PHASE_ORDER]
+    if args.only:
+        run_tags = set(args.only)
+    elif args.from_phase:
+        try:
+            idx = all_tags.index(args.from_phase)
+        except ValueError:
+            print(f"Unknown phase '{args.from_phase}'. "
+                  f"Valid: {', '.join(all_tags)}")
+            sys.exit(1)
+        run_tags = set(all_tags[idx:])
+    else:
+        run_tags = set(all_tags)
+
+    if args.skip:
+        run_tags -= set(args.skip)
+    if args.skip_bootstrap:
+        run_tags.discard("4b")
+
+    print("\n" + "#" * 70)
+    print("#" + " " * 68 + "#")
+    print("#   Bitcoin Risk Premia — Full Pipeline Run".ljust(69) + "#")
+    print(f"#   {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".ljust(69) + "#")
+    print("#" + " " * 68 + "#")
+    print("#" * 70)
+    print(f"\n  Phases to run: {', '.join(t for t in all_tags if t in run_tags)}")
+    if args.skip_bootstrap:
+        print("  (kernel bootstrap skipped)")
+    print()
+
+    manifest = []
+    t_total = time.time()
+
+    for tag, name, runner in PHASE_ORDER:
+        if tag not in run_tags:
+            continue
+
+        # Phase 4b (bootstrap) needs special argument forwarding
+        if tag == "4b":
+            with PhaseTimer(f"Phase {tag}: {name}", manifest) as _:
+                phase_4_kernel_bootstrap(
+                    B=args.bootstrap_B,
+                    workers=args.bootstrap_workers,
+                )
+            if manifest[-1]["status"] == "FAILED" and not args.continue_on_error:
+                break
+            continue
+
+        try:
+            with PhaseTimer(f"Phase {tag}: {name}", manifest):
+                runner()
+        except Exception:
+            if not args.continue_on_error:
+                print(f"\n  Pipeline aborted at Phase {tag}. "
+                      f"Use --continue-on-error to proceed past failures, "
+                      f"or --from {tag} to resume after fixing the issue.")
+                break
+
+    # Summary
+    dt_total = time.time() - t_total
+    print("\n" + "=" * 70)
+    print("  PIPELINE SUMMARY")
+    print("=" * 70)
+    print(f"  {'Phase':<45s} {'Status':>8s} {'Time':>10s}")
+    print(f"  {'-'*45} {'-'*8} {'-'*10}")
+    for row in manifest:
+        status_str = "✓" if row["status"] == "OK" else "✗ FAIL"
+        print(f"  {row['phase']:<45s} {status_str:>8s} {_fmt_time(row['seconds']):>10s}")
+        if row["error"]:
+            print(f"    → {row['error'][:80]}")
+    print(f"  {'-'*45} {'-'*8} {'-'*10}")
+    print(f"  {'Total':<45s} {'':>8s} {_fmt_time(dt_total):>10s}")
+
+    n_ok = sum(1 for r in manifest if r["status"] == "OK")
+    n_fail = sum(1 for r in manifest if r["status"] == "FAILED")
+    if n_fail == 0:
+        print(f"\n  All {n_ok} phases completed successfully.")
+    else:
+        print(f"\n  {n_ok} phases OK, {n_fail} FAILED.")
+
+    # Save manifest
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    manifest_path = LOG_DIR / f"run_{ts}.csv"
+    pd.DataFrame(manifest).to_csv(manifest_path, index=False)
+    print(f"  Run manifest saved to {manifest_path}")
+
+    # Post-run verification checklist
+    print("\n" + "=" * 70)
+    print("  POST-RUN CHECKLIST (manual)")
+    print("=" * 70)
+    print("""
+  After a successful full run, verify these locked facts before updating
+  the LaTeX draft. Each must be checked against the new CSVs — do not
+  carry forward old numbers.
+
+  1. CP rank: R = 1 survives all four genuine seeds? (tensor_pca_diagnostics_seeds.csv)
+  2. Almeida-grid R = 2 CORCONDIA still ~ -66.8? (tensor_pca_diagnostics.csv)
+  3. Lambda weights at θ = 2: (1, -1, 1)? (cyl_decomposition_matched.csv header)
+  4. Kurtosis share ≈ 30%? Stable across κ bounds? (kappa_sensitivity.csv)
+  5. Low-vol kernel: c < 0? Bootstrap P(c < 0) > 0.95? (phase3_bootstrap_ci_crypto.csv)
+  6. Variance wedge β₂ significant? β₃, β₄ insignificant? (matched_difference_regressions.csv)
+  7. EP totals: compare raw-moment vs density-based rows (ep_bootstrap_ci.csv)
+  8. MFK tent shape: significant under block-bootstrap bands? (fig_mfk_unconditional.png)
+  9. Macro/full specs: did they converge with the new (b,c,d) parameterization?
+     (run_phase3 log — if yes, update the non-convergence narrative)
+    """)
+
+    sys.exit(1 if n_fail > 0 else 0)
+
+if __name__ == "__main__":
+    main()

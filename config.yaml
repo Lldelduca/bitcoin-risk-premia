@@ -51,3 +51,9 @@ tensor_grid:
 # API keys
 api_keys:
   fred: "650fd0400ae3c131cb5f2de455f7c098"
+
+# Shared gross-return grid for Phases 2, 3, and 5
+return_grid:
+  min: 0.40
+  max: 2.00
+  points: 1000

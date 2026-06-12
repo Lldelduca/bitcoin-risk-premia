@@ -160,7 +160,55 @@ class SSVI:
         self._compile_surface()
         return self
 
-    def _compile_surface(self):
+    @classmethod
+    def from_params(cls, params_day: pd.DataFrame, forward_map=None, venue: str = "", date=""):
+        if params_day.empty:
+            raise ValueError(f"from_params: empty parameter frame for {venue} on {date}")
+
+        obj = cls.__new__(cls)
+        obj.df = None
+        obj.venue = venue or (str(params_day["venue"].iloc[0]) if "venue" in params_day.columns else "")
+        obj.date = date if date != "" else (params_day["date"].iloc[0] if "date" in params_day.columns else "")
+        obj.min_opts = None
+
+        p = params_day.sort_values("tau")
+        Ts = p["tau"].to_numpy(dtype=float)
+        if len(np.unique(Ts)) != len(Ts):
+            raise ValueError(f"from_params: duplicate maturities for {obj.venue} on {obj.date}")
+
+        obj.res = {
+            "theta": dict(zip(Ts, p["theta"].astype(float))),
+            "rho": dict(zip(Ts, p["rho"].astype(float))),
+            "eta": dict(zip(Ts, p["eta"].astype(float))),
+            "gamma": dict(zip(Ts, p["gamma"].astype(float))),
+            "maturities": Ts,
+        }
+
+        # Forward prices: prefer the saved column, else use the provided map
+        if "forward" in p.columns and p["forward"].notna().all():
+            F_vals = p["forward"].to_numpy(dtype=float)
+        elif forward_map is not None:
+            fm = pd.Series(dict(forward_map)).sort_index()
+            fm_taus = fm.index.to_numpy(dtype=float)
+            F_vals = np.empty(len(Ts))
+            for i, T in enumerate(Ts):
+                j = int(np.argmin(np.abs(fm_taus - T)))
+                if abs(fm_taus[j] - T) > 1e-6:
+                    raise ValueError(
+                        f"from_params: no forward within 1e-6 of tau={T} "
+                        f"for {obj.venue} on {obj.date}"
+                    )
+                F_vals[i] = float(fm.iloc[j])
+        else:
+            raise ValueError(
+                "from_params requires a 'forward' column in params_day or a "
+                "forward_map (e.g. df_day.groupby('tau')['forward_price'].mean())"
+            )
+
+        obj._compile_surface(F_vals=F_vals)
+        return obj
+
+    def _compile_surface(self, F_vals=None):
         Ts = self.res["maturities"]
         self._surface = {
             "Ts": Ts,
@@ -171,9 +219,14 @@ class SSVI:
         }
         self._surface["sqrt_theta"] = np.sqrt(self._surface["theta"])
 
-        # Forward price per fitted maturity
-        F_map = self.df.groupby("tau")["forward_price"].mean()
-        F_vals = np.array([F_map.get(T, F_map.iloc[-1]) for T in Ts])
+        # Forward price per fitted maturity: from the raw data when fitting,
+        if F_vals is None:
+            F_map = self.df.groupby("tau")["forward_price"].mean()
+            F_vals = np.array([F_map.get(T, F_map.iloc[-1]) for T in Ts])
+        else:
+            F_vals = np.asarray(F_vals, dtype=float)
+            if len(F_vals) != len(Ts):
+                raise ValueError("_compile_surface: F_vals length mismatch")
         self._surface["F"] = F_vals
         self._forward_interp = interp1d(
             Ts, F_vals, kind="linear", fill_value="extrapolate"
@@ -294,7 +347,7 @@ class SSVI:
         if self.res is None:
             raise ValueError("Call .fit() before .get_fitted_params()")
         rows = []
-        for T in self.res["maturities"]:
+        for i, T in enumerate(self.res["maturities"]):
             rows.append({
                 "date": self.date,
                 "venue": self.venue,
@@ -307,5 +360,9 @@ class SSVI:
                 "phi": self._phi_power_law(
                     self.res["theta"][T], self.res["eta"][T], self.res["gamma"][T]
                 ),
+                # Saved so SSVI.from_params can reconstruct the surface
+                # without access to the raw option data.
+                "forward": float(self._surface["F"][i]),
             })
         return rows
+    

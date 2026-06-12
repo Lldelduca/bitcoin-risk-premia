@@ -36,12 +36,26 @@ def load_venue_data(venue: str) -> pd.DataFrame:
     mask = (df['date'] >= SAMPLE_START) & (df['date'] <= SAMPLE_END)
     return df[mask].copy()
 
-def extract_venue_densities(venue: str, df: pd.DataFrame):
-    """Extracts RNDs for all trading days at target maturities"""
-    dates = np.sort(df['date'].unique())
+def load_ssvi_params() -> pd.DataFrame:
+    """Loads the fitted SSVI parameters saved by fit_surfaces (Phase 1a)."""
+    params_path = SURFACES_DIR / "ssvi_params.parquet"
+    if not params_path.exists():
+        raise FileNotFoundError(
+            f"{params_path} not found. Run fit_surfaces first; densities are "
+            f"extracted from the saved surfaces, never by refitting."
+        )
+    params = pd.read_parquet(params_path)
+    params["date"] = pd.to_datetime(params["date"])
+    return params
+
+def extract_venue_densities(venue: str, df: pd.DataFrame, params: pd.DataFrame):
+    params_v = params[params["venue"] == venue]
+    dates = np.sort(params_v["date"].unique())
     n_days = len(dates)
-    print(f"\n  [{venue}] Extracting RNDs for {n_days} days × "
-          f"{len(TARGET_MATURITIES_DAYS)} maturities")
+    has_forward_col = "forward" in params_v.columns and params_v["forward"].notna().all()
+    print(f"\n  [{venue}] Reconstructing surfaces for {n_days} fitted days × "
+          f"{len(TARGET_MATURITIES_DAYS)} maturities "
+          f"({'forwards from parquet' if has_forward_col else 'forwards from cleaned data'})")
 
     results = []
     n_success = 0
@@ -49,19 +63,27 @@ def extract_venue_densities(venue: str, df: pd.DataFrame):
     start_time = time.time()
 
     for idx, d in enumerate(dates):
-        df_day = df[df['date'] == d]
+        params_day = params_v[params_v["date"] == d]
+        df_day = df[df["date"] == d]
 
-        # Fit SSVI for this day
+        # Reconstruct the fitted surface (no refitting)
         try:
-            ssvi = SSVI(df_day, venue=venue, date=d, min_options_per_slice=MIN_OPTIONS_PER_SLICE)
-            ssvi.fit()
+            forward_map = None
+            if not has_forward_col:
+                if df_day.empty:
+                    n_skip += 1
+                    continue
+                forward_map = df_day.groupby("tau")["forward_price"].mean()
+            ssvi = SSVI.from_params(params_day, forward_map=forward_map,
+                                    venue=venue, date=d)
         except ValueError:
             n_skip += 1
             continue
 
         # Extract RND at each target maturity
         fitted_taus = ssvi.res['maturities']
-        r = df_day['risk_free_rate'].iloc[0] if 'risk_free_rate' in df_day.columns else 0.0
+        r = (df_day['risk_free_rate'].iloc[0]
+             if ('risk_free_rate' in df_day.columns and not df_day.empty) else 0.0)
 
         for tau_days in TARGET_MATURITIES_DAYS:
             tau = tau_days / 365.25
@@ -73,6 +95,7 @@ def extract_venue_densities(venue: str, df: pd.DataFrame):
             try:
                 rnd = extract_rnd_with_gpd_tails(ssvi, tau, n_strikes=N_STRIKES, r=r)
                 val = validate_rnd(rnd)
+                tail = rnd.get('tail_diagnostics', {})
 
                 results.append({
                     'date': d,
@@ -86,6 +109,13 @@ def extract_venue_densities(venue: str, df: pd.DataFrame):
                     'mean_return': val['mean_return'],
                     'std_return': val['std_return'],
                     'valid': val['valid'],
+
+                    # Tail-splice diagnostics: xi is the option-implied GPD
+                    'xi_left': tail.get('xi_left', np.nan),
+                    'xi_right': tail.get('xi_right', np.nan),
+                    'splice_left': tail.get('splice_left', np.nan),
+                    'splice_right': tail.get('splice_right', np.nan),
+                    'mass_renorm': tail.get('mass_renorm', np.nan),
                 })
 
             except Exception as e:
@@ -129,6 +159,11 @@ def save_rnd_results(results, venue):
             'mean_return': r['mean_return'],
             'std_return': r['std_return'],
             'valid': r['valid'],
+            'xi_left': r.get('xi_left', np.nan),
+            'xi_right': r.get('xi_right', np.nan),
+            'splice_left': r.get('splice_left', np.nan),
+            'splice_right': r.get('splice_right', np.nan),
+            'mass_renorm': r.get('mass_renorm', np.nan),
         })
         density_rows.append({
             'date': r['date'],
@@ -164,11 +199,16 @@ def extract_all_densities():
 
     all_summaries = []
 
+    print("\n  Loading fitted SSVI parameters...")
+    params = load_ssvi_params()
+    print(f"  Loaded {len(params):,} parameter rows "
+          f"({params['date'].nunique()} dates, venues: {sorted(params['venue'].unique())})")
+
     for venue in ["CME", "DER"]:
         df = load_venue_data(venue)
         print(f"\n  {venue}: {len(df):,} options, {df['date'].nunique()} days")
 
-        results = extract_venue_densities(venue, df)
+        results = extract_venue_densities(venue, df, params)
         summary = save_rnd_results(results, venue)
         if summary is not None:
             all_summaries.append(summary)

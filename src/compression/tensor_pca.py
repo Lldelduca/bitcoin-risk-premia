@@ -13,7 +13,7 @@ from typing import Tuple, Optional
 from src.config import get_path, SAMPLE, TENSOR_GRID
 from src.surfaces.ssvi import SSVI
 
-def build_ivs_tensor(params_df: pd.DataFrame, cleaned_dfs: dict, t_grid_days: list, k_grid: np.ndarray, 
+def build_ivs_tensor(params_df: pd.DataFrame, cleaned_dfs: dict = None, t_grid_days: list = None, k_grid: np.ndarray = None,
                      venues: list = ["CME", "DER"],) -> Tuple[np.ndarray, dict]:
    
     t_grid_days = np.asarray(t_grid_days, dtype=int)
@@ -35,20 +35,38 @@ def build_ivs_tensor(params_df: pd.DataFrame, cleaned_dfs: dict, t_grid_days: li
     X = np.full((T, M, D, J), np.nan)
 
     for j, venue in enumerate(venues):
-        df_v = cleaned_dfs[venue]
-        df_v["date"] = pd.to_datetime(df_v["date"])
+        params_v = params_df[params_df["venue"] == venue].copy()
+        params_v["date"] = pd.to_datetime(params_v["date"])
+        has_forward_col = ("forward" in params_v.columns
+                           and params_v["forward"].notna().all())
+        df_v = cleaned_dfs.get(venue) if cleaned_dfs is not None else None
+        if df_v is not None:
+            df_v["date"] = pd.to_datetime(df_v["date"])
         n_filled = 0
         n_skipped = 0
 
         for t_idx, d in enumerate(common_dates):
-            df_day = df_v[df_v["date"] == d]
-            if df_day.empty:
+            params_day = params_v[params_v["date"] == d]
+            if params_day.empty:
                 n_skipped += 1
                 continue
 
+            # Reconstruct the saved Phase 1a surface
             try:
-                ssvi = SSVI(df_day, venue=venue, date=d)
-                ssvi.fit()
+                forward_map = None
+                if not has_forward_col:
+                    if df_v is None:
+                        raise ValueError(
+                            "ssvi_params.parquet has no 'forward' column and no "
+                            "cleaned data was provided to recover forwards"
+                        )
+                    df_day = df_v[df_v["date"] == d]
+                    if df_day.empty:
+                        n_skipped += 1
+                        continue
+                    forward_map = df_day.groupby("tau")["forward_price"].mean()
+                ssvi = SSVI.from_params(params_day, forward_map=forward_map,
+                                        venue=venue, date=d)
             except Exception:
                 n_skipped += 1
                 continue
@@ -200,10 +218,12 @@ def mode_n_product(X: np.ndarray, M: np.ndarray, mode: int) -> np.ndarray:
     new_shape[mode] = M.shape[0]
     return np.moveaxis(result.reshape([new_shape[mode]] + [X.shape[m] for m in range(X.ndim) if m != mode]), 0, mode)
 
-def select_rank(X: np.ndarray, max_rank: int = 6, corcondia_threshold: float = 70.0, verbose: bool = True) -> dict:
+def select_rank(X: np.ndarray, max_rank: int = 6, corcondia_threshold: float = 70.0, verbose: bool = True,
+                random_state: int = 42) -> dict:
+
     diagnostics = []
     for r in range(1, max_rank + 1):
-        factors, weights, err = cp_als(X, rank=r)
+        factors, weights, err = cp_als(X, rank=r, random_state=random_state)
         cc = corcondia(X, factors, weights)
         diagnostics.append({"rank": r, "reconstruction_error": err, "explained": 1 - err ** 2, "corcondia": cc})
         if verbose:

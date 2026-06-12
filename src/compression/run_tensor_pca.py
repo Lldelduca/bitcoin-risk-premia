@@ -23,6 +23,44 @@ MATURITY_GRIDS = {
 SURFACES_DIR = Path(get_path("cleaned_cme")).parent.parent / "surfaces"
 SURFACES_DIR.mkdir(parents=True, exist_ok=True)
 
+CLEAN_DIR = Path(get_path("cleaned_cme")).parent
+
+def _enforce_sign_convention(factors, meta):
+    """Anchors each CP component's time factor to corr(U_time[:, r], RV) >= 0.
+
+    Uses realized variance from the auxiliary panel as the anchor (it is
+    venue-free and always available). For components nearly orthogonal to RV
+    the sign is economically arbitrary, but the rule is still deterministic,
+    which is what reproducibility requires. The moneyness factor (mode 1) is
+    flipped jointly so the CP reconstruction is bit-identical.
+    """
+    panel_path = CLEAN_DIR / "auxiliary_panel.parquet"
+    if not panel_path.exists():
+        print("  [WARN] auxiliary_panel.parquet not found; sign convention NOT enforced.")
+        return factors
+
+    panel = pd.read_parquet(panel_path)[["date", "rv"]]
+    panel["date"] = pd.to_datetime(panel["date"])
+    rv = panel.set_index("date")["rv"].reindex(pd.to_datetime(meta["dates"]))
+
+    valid = rv.notna().to_numpy()
+    if valid.sum() < 30:
+        print("  [WARN] Too few RV observations to anchor signs; convention NOT enforced.")
+        return factors
+
+    rank = factors[0].shape[1]
+    for r in range(rank):
+        u = factors[0][valid, r]
+        rho = np.corrcoef(u, rv.to_numpy()[valid])[0, 1]
+        if rho < 0:
+            factors[0][:, r] *= -1.0
+            factors[1][:, r] *= -1.0  # compensate on the moneyness mode
+            print(f"  Sign convention: flipped component {r+1} "
+                  f"(corr with RV was {rho:+.3f}, now {-rho:+.3f})")
+        else:
+            print(f"  Sign convention: component {r+1} OK (corr with RV = {rho:+.3f})")
+    return factors
+
 def run_tensor_decomposition(grid_name: str = "almeida"):
     print("\n" + "=" * 60)
     print("  CP Tensor Decomposition Pipeline")
@@ -80,8 +118,12 @@ def run_tensor_decomposition(grid_name: str = "almeida"):
     seed_chosen = {}
     for seed in [42, 7, 100, 2024]:
         print(f"\n  --- Seed {seed} ---")
-        np.random.seed(seed)
-        res = select_rank(X_std, max_rank=6, corcondia_threshold=70.0)
+        # The seed is passed into select_rank -> cp_als(random_state=seed),
+        # which controls the random factor initialization. (The previous
+        # np.random.seed(seed) call had no effect: cp_als uses its own
+        # np.random.default_rng with a hardcoded default of 42, so all four
+        # 'seeds' ran identical computations.)
+        res = select_rank(X_std, max_rank=6, corcondia_threshold=70.0, random_state=seed)
         seed_results[seed] = res["diagnostics"]
         seed_chosen[seed] = res["chosen_rank"]
         print(f"  Seed {seed}: chosen rank = {res['chosen_rank']}")
@@ -108,10 +150,12 @@ def run_tensor_decomposition(grid_name: str = "almeida"):
 
     # Final CP fit at chosen rank
     print(f"\n  Running final CP-ALS at rank {chosen_rank}...")
-    np.random.seed(42)
-    factors, weights, final_err = cp_als(X_std, rank=chosen_rank, max_iter=1000)
+    factors, weights, final_err = cp_als(X_std, rank=chosen_rank, max_iter=1000, random_state=42)
     print(f"  Final relative reconstruction error: {final_err:.4f}")
     print(f"  Variance explained: {1 - final_err**2:.3f}")
+
+    # Sign convention: CP factors are only identified up to a joint sign flip
+    factors = _enforce_sign_convention(factors, meta)
 
     # Extract temporal factor (mode 0) → Z^{IVS}_t
     U_time = factors[0]
@@ -214,3 +258,4 @@ if __name__ == "__main__":
             run_tensor_decomposition(grid_name=g)
     else:
         run_tensor_decomposition(grid_name=args.grid)
+        

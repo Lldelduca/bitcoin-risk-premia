@@ -88,67 +88,148 @@ def extract_rnd_from_ssvi(ssvi_model, tau, n_strikes=500, r=0.0):
         'iv': iv_grid,
     }
 
+def _solve_gpd_shape(f_splice, f_match, mass, x_match):
+    """Solves for the GPD (shape xi, scale beta) of an appended tail.
+
+    The tail density beyond the splice point is modeled as
+        f_tail(x) = mass * gpd_pdf(x; xi, loc=0, scale=beta),
+    where x is the excess beyond the splice. Two identifying conditions, both
+    taken from the option-implied density itself (Figlewski 2010; Birru &
+    Figlewski 2012):
+
+      1. Mass: the appended tail integrates to the residual probability
+         `mass` by construction (the GPD pdf integrates to one).
+         Continuity at the splice then pins the scale:
+             mass / beta = f_splice  =>  beta = mass / f_splice.
+      2. Shape: the tail density must also pass through the BL density at a
+         second, deeper quantile point (excess x_match, level f_match);
+         this one-dimensional condition pins xi.
+
+    Returns (xi, beta). Falls back to the exponential tail xi = 0 (which
+    still satisfies continuity and the mass condition) when no root exists.
+    """
+    beta = mass / f_splice
+
+    def gap(xi):
+        return mass * genpareto.pdf(x_match, xi, loc=0, scale=beta) - f_match
+
+    # Bracket the root: gap is monotone increasing in xi for fixed x_match
+    # beyond the scale, but scan a grid to be robust.
+    xi_grid = np.linspace(-0.9, 10.0, 120)
+    vals = np.array([gap(x) for x in xi_grid])
+    finite = np.isfinite(vals)
+    xi_grid, vals = xi_grid[finite], vals[finite]
+
+    sign_change = np.where(np.diff(np.sign(vals)) != 0)[0]
+    if len(sign_change) == 0:
+        return 0.0, beta  # exponential fallback (level + mass still matched)
+
+    i = sign_change[0]
+    try:
+        from scipy.optimize import brentq
+        xi = brentq(gap, xi_grid[i], xi_grid[i + 1], xtol=1e-10)
+    except Exception:
+        return 0.0, beta
+    return float(xi), float(beta)
+
+
+def append_gpd_tails(R, q, tail_quantile=0.10):
+    """Replaces the tails of a normalized density on grid R with GPD tails
+    matched to the density's own level and mass (Figlewski-style splice).
+
+    Splice points are the `tail_quantile` and `1 - tail_quantile` quantiles
+    of the density's CDF (probability quantiles, not grid-index fractions).
+    The shape parameter of each tail is identified by additionally matching
+    the density level at the `tail_quantile/2` (resp. `1 - tail_quantile/2`)
+    quantile. The appended tails carry exactly the residual probability mass,
+    so the spliced density integrates to one by construction (a final
+    renormalization absorbs only trapezoid error and any mass beyond the
+    finite grid).
+
+    Returns (q_spliced, diagnostics_dict).
+    """
+    q = np.asarray(q, dtype=float).copy()
+    R = np.asarray(R, dtype=float)
+
+    # CDF of the input density
+    dR = np.diff(R)
+    cdf = np.concatenate([[0.0], np.cumsum(0.5 * (q[1:] + q[:-1]) * dR)])
+    total = cdf[-1]
+    if total <= 1e-8:
+        raise ValueError("append_gpd_tails: degenerate input density")
+    cdf = cdf / total
+    q = q / total
+
+    def _quantile(alpha):
+        idx = int(np.searchsorted(cdf, alpha))
+        idx = min(max(idx, 1), len(R) - 2)
+        return idx
+
+    diag = {}
+
+    # ---- Left tail ----
+    iL = _quantile(tail_quantile)
+    iL_match = _quantile(tail_quantile / 2.0)
+    u_L, f_L = R[iL], q[iL]
+    mass_L = cdf[iL]
+    if f_L > 1e-12 and mass_L > 1e-8 and iL_match < iL:
+        x_match = u_L - R[iL_match]
+        xi_L, beta_L = _solve_gpd_shape(f_L, q[iL_match], mass_L, x_match)
+        left = R < u_L
+        q[left] = mass_L * genpareto.pdf(u_L - R[left], xi_L, loc=0, scale=beta_L)
+        diag.update({"xi_left": xi_L, "beta_left": beta_L,
+                     "splice_left": float(u_L), "mass_left": float(mass_L)})
+    else:
+        diag.update({"xi_left": np.nan, "beta_left": np.nan,
+                     "splice_left": float(u_L), "mass_left": float(mass_L)})
+
+    # ---- Right tail ----
+    iR = _quantile(1.0 - tail_quantile)
+    iR_match = _quantile(1.0 - tail_quantile / 2.0)
+    u_R, f_R = R[iR], q[iR]
+    mass_R = 1.0 - cdf[iR]
+    if f_R > 1e-12 and mass_R > 1e-8 and iR_match > iR:
+        x_match = R[iR_match] - u_R
+        xi_R, beta_R = _solve_gpd_shape(f_R, q[iR_match], mass_R, x_match)
+        right = R > u_R
+        q[right] = mass_R * genpareto.pdf(R[right] - u_R, xi_R, loc=0, scale=beta_R)
+        diag.update({"xi_right": xi_R, "beta_right": beta_R,
+                     "splice_right": float(u_R), "mass_right": float(mass_R)})
+    else:
+        diag.update({"xi_right": np.nan, "beta_right": np.nan,
+                     "splice_right": float(u_R), "mass_right": float(mass_R)})
+
+    # Renormalize (absorbs trapezoid error and mass beyond the finite grid)
+    integral = trapezoid(q, R)
+    if integral > 1e-8:
+        q = q / integral
+    diag["mass_renorm"] = float(integral)
+
+    return q, diag
+
+
 def extract_rnd_with_gpd_tails(ssvi_model, tau, n_strikes=500, r=0.0, tail_quantile=0.10):
     """
-    Extracts the RND with GPD tail extrapolation for robustness.
+    Extracts the RND with GPD tail extrapolation.
 
-    The core density is extracted via BL (above). The tails beyond the tail_quantile (default: 10th and 90th percentiles of the
-    return grid) are replaced with fitted GPD distributions to ensure well-behaved density in regions where the SSVI surface
-    is least reliable.
+    The core density is extracted via BL (above). Beyond the tail_quantile
+    probability quantiles of the extracted density, the tails are replaced
+    with GPD tails whose scale is pinned by density continuity at the splice
+    and whose shape is pinned by matching the BL density at a second, deeper
+    quantile (Figlewski 2010 splice). Both parameters are therefore
+    identified from the option-implied density itself.
+
+    (The previous implementation called genpareto.fit on the deterministic
+    grid coordinates — an i.i.d. fit to evenly spaced points — so its tail
+    parameters reflected grid geometry rather than market information.)
     """
 
     # Extract the base RND
     rnd = extract_rnd_from_ssvi(ssvi_model, tau, n_strikes, r)
-    R = rnd['returns']
-    q = rnd['density'].copy()
-
-    # Tails
-    n = len(R)
-    n_tail = max(int(n * tail_quantile), 10)
-
-    left_idx = n_tail
-    right_idx = n - n_tail
-
-    # Fit GPD to left tail (excesses below threshold)
-    try:
-        left_threshold = R[left_idx]
-        left_excesses = left_threshold - R[:left_idx]
-        left_excesses = left_excesses[left_excesses > 0]
-        if len(left_excesses) >= 5:
-            c_left, loc_left, scale_left = genpareto.fit(
-                left_excesses, floc=0
-            )
-
-            for i in range(left_idx):
-                excess = left_threshold - R[i]
-                if excess > 0:
-                    q[i] = q[left_idx] * genpareto.sf(excess, c_left, 0, scale_left)
-    except Exception:
-        pass 
-
-    # Fit GPD to right tail (excesses above threshold)
-    try:
-        right_threshold = R[right_idx]
-        right_excesses = R[right_idx:] - right_threshold
-        right_excesses = right_excesses[right_excesses > 0]
-        if len(right_excesses) >= 5:
-            c_right, loc_right, scale_right = genpareto.fit(
-                right_excesses, floc=0
-            )
-
-            for i in range(right_idx, n):
-                excess = R[i] - right_threshold
-                if excess > 0:
-                    q[i] = q[right_idx] * genpareto.sf(excess, c_right, 0, scale_right)
-    except Exception:
-        pass
-
-    # Re-normalize
-    integral = trapezoid(q, R)
-    if integral > 1e-8:
-        q = q / integral
-
-    rnd['density'] = q
+    q_spliced, tail_diag = append_gpd_tails(rnd['returns'], rnd['density'],
+                                            tail_quantile=tail_quantile)
+    rnd['density'] = q_spliced
+    rnd['tail_diagnostics'] = tail_diag
     return rnd
 
 def validate_rnd(rnd, rtol=0.02):

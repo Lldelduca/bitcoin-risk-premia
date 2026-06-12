@@ -141,6 +141,18 @@ def build_conditioning_vectors():
     print(f"  Common CME-Deribit window: {len(df_common):,} days "
           f"({df_common['date'].min().date()} -> {df_common['date'].max().date()})")
 
+    # Guard the CP sign convention
+    if df_common["rv"].notna().sum() >= 30:
+        rho_check = df_common[["Z_IVS_1", "rv"]].dropna().corr().iloc[0, 1]
+        print(f"  Sign-convention check: corr(Z_IVS_1, RV) = {rho_check:+.3f}")
+        if rho_check < 0:
+            raise ValueError(
+                f"corr(Z_IVS_1, RV) = {rho_check:.3f} < 0: the CP time factor "
+                f"sign convention was not enforced. Re-run run_tensor_pca "
+                f"(which anchors Z_IVS_1 to RV) before building conditioning "
+                f"vectors; proceeding would invert all volatility terciles."
+            )
+
     Z_macro, Z_crypto, Z_full, Z_crypto_hl = build_specifications(df_common)
 
     # Save core specifications
