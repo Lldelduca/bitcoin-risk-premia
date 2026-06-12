@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 from src.config import get_path, SAMPLE
 from src.surfaces.ssvi import SSVI
-from src.moment_decomposition.bkm_moments import extract_bkm_moments
+from src.moment_decomposition.bkm_moments import (extract_bkm_moments, evaluate_iv_grid, bkm_from_iv_grid)
 from src.moment_decomposition.cumulant_premia import (compute_physical_variance, compute_cumulant_premia)
 from src.moment_decomposition.cumulant_premia import (compute_cyl_decomposition_table, robustness_over_theta, cyl_weights)
 
@@ -34,6 +34,9 @@ TAU_YEARS = TAU_DAYS / 365.25
 THETA_BASELINE = 2.0
 THETA_GRID = (1.0, 2.0, 3.0)
 
+KAPPA_BOUNDS = (1.0, 1.25, 1.5)
+KAPPA_HEADLINE = 1.5
+
 plt.rcParams["figure.figsize"] = (13, 5)
 plt.rcParams["axes.grid"] = True
 plt.rcParams["grid.alpha"] = 0.3
@@ -46,18 +49,50 @@ def load_option_data(venue):
     mask = (df["date"] >= SAMPLE_START) & (df["date"] <= SAMPLE_END)
     return df[mask].copy()
 
-def extract_bkm_for_venue(venue, df):
-    dates = sorted(df["date"].unique())
+def load_ssvi_params():
+    params_path = SURFACES_DIR / "ssvi_params.parquet"
+    if not params_path.exists():
+        raise FileNotFoundError(
+            f"{params_path} not found. Run fit_surfaces first; Phase 4 "
+            f"evaluates the saved Phase 1 surfaces, never a refit."
+        )
+    params = pd.read_parquet(params_path)
+    params["date"] = pd.to_datetime(params["date"])
+    return params
+
+def extract_bkm_for_venue(venue, df, params):
+    params_v = params[params["venue"] == venue]
+    dates = sorted(params_v["date"].unique())
+    has_forward_col = "forward" in params_v.columns and params_v["forward"].notna().all()
     results = []
+    sweep_rows = []
     for i, date in enumerate(dates):
-        df_day = df[df["date"] == date]
+        params_day = params_v[params_v["date"] == date]
         try:
-            ssvi = SSVI(df_day, venue=venue, date=date)
-            ssvi.fit()
+            forward_map = None
+            if not has_forward_col:
+                df_day = df[df["date"] == date]
+                if df_day.empty:
+                    continue
+                forward_map = df_day.groupby("tau")["forward_price"].mean()
+            ssvi = SSVI.from_params(params_day, forward_map=forward_map,
+                                    venue=venue, date=date)
             fitted_days = np.array(ssvi.res["maturities"]) * 365.25
             if TAU_DAYS < fitted_days.min() * 0.8 or TAU_DAYS > fitted_days.max() * 1.2:
                 continue
-            bkm = extract_bkm_moments(ssvi, TAU_YEARS, n_strikes=500, r=0.0)
+
+            # Evaluate the IV grid ONCE at the widest bound
+            F, kgrid, ivgrid = evaluate_iv_grid(ssvi, TAU_YEARS, n_strikes=500,
+                                                kappa_max=KAPPA_HEADLINE)
+            bkm = None
+            for kb in KAPPA_BOUNDS:
+                b = bkm_from_iv_grid(F, kgrid, ivgrid, TAU_YEARS, r=0.0, kappa_bound=kb)
+                sweep_rows.append({
+                    "date": date, "venue": venue, "kappa_bound": kb,
+                    "V": b.V, "W": b.W, "X": b.X,
+                })
+                if kb == KAPPA_HEADLINE:
+                    bkm = b
             results.append({
                 "date": date, "venue": venue,
                 "V": bkm.V, "W": bkm.W, "X": bkm.X,
@@ -72,7 +107,7 @@ def extract_bkm_for_venue(venue, df):
         if (i + 1) % 100 == 0:
             print(f"    [{venue}] {i+1}/{len(dates)} ({len(results)} ok)")
     print(f"  [{venue}] BKM extraction complete: {len(results)}/{len(dates)} days")
-    return pd.DataFrame(results)
+    return pd.DataFrame(results), pd.DataFrame(sweep_rows)
 
 def load_physical_variance():
     panel = pd.read_parquet(CLEAN_DIR / "auxiliary_panel.parquet")
@@ -90,18 +125,28 @@ def run_phase4():
     print(f"  theta baseline = {THETA_BASELINE}; weights = {cyl_weights(THETA_BASELINE)}")
     print("=" * 60)
 
-    # Step 1: BKM extraction
+    # Step 1: BKM extraction from the saved Phase 1 surfaces
+    print("\n  Loading fitted SSVI parameters...")
+    params = load_ssvi_params()
+    print(f"  Loaded {len(params):,} parameter rows")
+
     all_bkm = []
+    all_sweep = []
     for venue in ["CME", "DER"]:
         print(f"\n  Loading {venue} options...")
         df = load_option_data(venue)
         print(f"  {venue}: {len(df):,} options, {df['date'].nunique()} days")
-        bkm_df = extract_bkm_for_venue(venue, df)
+        bkm_df, sweep_df = extract_bkm_for_venue(venue, df, params)
         all_bkm.append(bkm_df)
+        all_sweep.append(sweep_df)
     bkm_all = pd.concat(all_bkm, ignore_index=True)
     bkm_all["date"] = pd.to_datetime(bkm_all["date"])
     bkm_all.to_parquet(PHASE4_DIR / "bkm_moments.parquet", index=False)
     print(f"\n  Saved BKM moments: {len(bkm_all)} day-venue pairs")
+
+    sweep_all = pd.concat(all_sweep, ignore_index=True)
+    sweep_all["date"] = pd.to_datetime(sweep_all["date"])
+    sweep_all.to_parquet(PHASE4_DIR / "bkm_kappa_sweep.parquet", index=False)
 
     # Step 2: physical variance (for VRP diagnostic only)
     print("\n  Computing rolling physical variance (252-day window)...")
@@ -132,17 +177,50 @@ def run_phase4():
     premia_df.to_parquet(PHASE4_DIR / "cumulant_premia.parquet", index=False)
     print(f"  Saved cumulant premia: {len(premia_df)} rows")
 
-    # Step 4: CL24 decomposition table
-    print("\n  CL24 conditional decomposition (unconditional + terciles)...")
+    # Step 4: CL24 decomposition tables
+    cme_days = set(premia_df.loc[premia_df["venue"] == "CME", "date"])
+    der_days = set(premia_df.loc[premia_df["venue"] == "DER", "date"])
+    matched_days = cme_days & der_days
+    premia_matched = premia_df[premia_df["date"].isin(matched_days)].copy()
+    print(f"\n  Matched CME-Deribit days: {len(matched_days)} "
+          f"({len(premia_matched)} venue-day rows)")
+
+    print("\n  CL24 decomposition — MATCHED DAYS (headline)...")
+    decomp_matched = compute_cyl_decomposition_table(premia_matched, tercile_col="tercile")
+    decomp_matched.to_csv(TAB_DIR / "cyl_decomposition_matched.csv", index=False)
+    print(decomp_matched.round(4).to_string(index=False))
+
+    # Consistency guard
+    for venue in ["CME", "DER"]:
+        v = decomp_matched[decomp_matched["venue"] == venue]
+        n_uncond = int(v.loc[v["regime"] == "unconditional", "n_days"].iloc[0])
+        n_terc = int(v.loc[v["regime"] != "unconditional", "n_days"].sum())
+        if n_uncond != n_terc:
+            print(f"  [WARN] {venue}: unconditional n={n_uncond} != "
+                  f"sum of terciles {n_terc} — tercile labels missing on "
+                  f"{n_uncond - n_terc} matched days; check Z_crypto coverage.")
+
+    print("\n  CL24 decomposition — ALL DAYS (supplementary)...")
     decomp = compute_cyl_decomposition_table(premia_df, tercile_col="tercile")
     decomp.to_csv(TAB_DIR / "cyl_decomposition.csv", index=False)
     print(decomp.round(4).to_string(index=False))
+    print("\n  [NOTE] LaTeX: source the headline cross-venue table from "
+          "cyl_decomposition_matched.csv; cyl_decomposition.csv (all days) "
+          "is supplementary.")
 
-    # Step 5: theta robustness
-    print("\n  Theta robustness sweep...")
-    rob = robustness_over_theta(bkm_all[["date", "venue", "V", "W", "X"]], THETA_GRID)
+    # Step 5: theta robustness (matched days, consistent with the headline)
+    print("\n  Theta robustness sweep (matched days)...")
+    bkm_matched = bkm_all[bkm_all["date"].isin(matched_days)]
+    rob = robustness_over_theta(bkm_matched[["date", "venue", "V", "W", "X"]], THETA_GRID)
     rob.to_csv(PHASE4_DIR / "theta_robustness.csv", index=False)
     print(rob.round(4).to_string(index=False))
+
+    # Step 5b: kappa-bound truncation sensitivity (matched days)
+    print("\n  Kappa-bound sensitivity (matched days)...")
+    kappa_sens = kappa_sensitivity_table(sweep_all, matched_days, theta=THETA_BASELINE)
+    kappa_sens.to_csv(TAB_DIR / "kappa_sensitivity.csv", index=False)
+    print(kappa_sens.round(4).to_string(index=False))
+    _plot_kappa_sensitivity(kappa_sens)
 
     # Step 6: moment summary
     summary = premia_df.groupby("venue").agg({
@@ -157,15 +235,60 @@ def run_phase4():
     _plot_rn_moments_timeseries(bkm_all)
     _plot_cumulant_contributions_ts(premia_df)
     _plot_contributions_boxplot(premia_df)
-    _plot_lb_decomposition_bars(decomp)
+    _plot_lb_decomposition_bars(decomp_matched) 
     _plot_moment_cross_venue_scatter(bkm_all)
     _plot_vrp_timeseries(premia_df)
     _plot_theta_robustness(rob)
 
     print(f"\n  Phase 4 complete. Figures in {FIG_DIR}/")
-    return bkm_all, premia_df, decomp, rob
+    return bkm_all, premia_df, decomp_matched, decomp, rob
 
 # Figure functions
+def kappa_sensitivity_table(sweep_all, matched_days, theta=2.0):
+    """Mean CL20 contributions and shares per venue and kappa truncation,
+    on matched days only (consistent with the headline table)."""
+    l1, l2, l3 = cyl_weights(theta)
+    s = sweep_all[sweep_all["date"].isin(matched_days)].copy()
+    s["Pi_2"] = l1 * s["V"]
+    s["Pi_3"] = l2 * s["W"]
+    s["Pi_4"] = l3 * s["X"]
+
+    rows = []
+    for venue in ["CME", "DER"]:
+        for kb in sorted(s["kappa_bound"].unique()):
+            v = s[(s["venue"] == venue) & (s["kappa_bound"] == kb)]
+            if len(v) == 0:
+                continue
+            p2, p3, p4 = v["Pi_2"].mean(), v["Pi_3"].mean(), v["Pi_4"].mean()
+            tot = p2 + p3 + p4
+            rows.append({
+                "venue": venue, "kappa_bound": kb, "n_days": len(v),
+                "Pi_2": p2, "Pi_3": p3, "Pi_4": p4, "lb_total": tot,
+                "share_var": p2 / tot if tot != 0 else np.nan,
+                "share_skew": p3 / tot if tot != 0 else np.nan,
+                "share_kurt": p4 / tot if tot != 0 else np.nan,
+                "lb_annualized_pct": 100.0 * tot * (365.0 / 27.0),
+            })
+    return pd.DataFrame(rows)
+
+def _plot_kappa_sensitivity(kappa_sens):
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+    for ax, (col, label) in zip(axes, [
+        ("share_kurt", r"Kurtosis share $\Pi_4 / \Sigma_k \Pi_k$"),
+        ("lb_total", r"CL20 bound $\Sigma_k \Pi_k$ (27-day)"),
+    ]):
+        for venue, color in [("CME", "C0"), ("DER", "C1")]:
+            v = kappa_sens[kappa_sens["venue"] == venue].sort_values("kappa_bound")
+            ax.plot(v["kappa_bound"], v[col], "o-", color=color, label=venue)
+        ax.set_xlabel(r"Strike-domain truncation $|\kappa| \leq$ bound")
+        ax.set_ylabel(label)
+        ax.legend()
+    fig.suptitle("CL20 Decomposition: Sensitivity to Strike-Domain Truncation (matched days)",
+                 fontsize=12)
+    plt.tight_layout()
+    plt.savefig(FIG_DIR / "fig_kappa_sensitivity.png", dpi=150)
+    plt.close()
+
 def _plot_rn_moments_timeseries(bkm_all):
     fig, axes = plt.subplots(3, 1, figsize=(13, 9), sharex=True)
     for venue, color in [("CME", "C0"), ("DER", "C1")]:
@@ -263,3 +386,4 @@ def _plot_theta_robustness(rob):
 
 if __name__ == "__main__":
     run_phase4()
+    
