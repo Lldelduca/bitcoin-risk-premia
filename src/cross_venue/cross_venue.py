@@ -14,6 +14,10 @@ import pandas as pd
 from scipy.integrate import trapezoid
 from typing import Dict, List
 import statsmodels.api as sm
+from src.inference.bootstrap_inference import (
+    block_bootstrap_mean_bands, block_bootstrap_group_mean_bands,
+    circular_block_indices,
+)
 
 # Component 1: Conditional MFK by volatility tercile
 def compute_conditional_mfk(rnd_cme_path, rnd_der_path, tercile_labels, tau_days=27, R_grid=None):
@@ -54,37 +58,113 @@ def compute_conditional_mfk(rnd_cme_path, rnd_der_path, tercile_labels, tau_days
 
     psi_df = pd.DataFrame(daily_psi, index=R_grid).T
     psi_df.index.name = "date"
+    psi_df = psi_df.sort_index()  # chronological order required by the block bootstrap
 
     # Merge with tercile labels
     psi_df = psi_df.join(tercile_labels[["tercile"]], how="left")
 
     results = {}
 
-    # Unconditional
-    psi_vals = psi_df.drop(columns=["tercile"]).values
+    # Inference
+    psi_vals = psi_df.drop(columns=["tercile"]).values.astype(float)
+    bands = block_bootstrap_mean_bands(psi_vals, block_length=27, B=1000, seed=42)
     results["unconditional"] = {
         "R_grid": R_grid,
-        "mean_psi": np.mean(psi_vals, axis=0),
-        "se_psi": np.std(psi_vals, axis=0) / np.sqrt(len(psi_vals)),
-        "n_days": len(psi_vals),
+        "mean_psi": bands["mean"],
+        "se_psi": bands["se_boot"],
+        "lo_psi": bands["lo"],
+        "hi_psi": bands["hi"],
+        "n_days": bands["n_days"],
     }
 
     # By tercile
-    for tercile in ["low", "mid", "high"]:
-        mask = psi_df["tercile"] == tercile
-        vals = psi_df.loc[mask].drop(columns=["tercile"]).values
-        if len(vals) > 0:
-            results[tercile] = {
-                "R_grid": R_grid,
-                "mean_psi": np.mean(vals, axis=0),
-                "se_psi": np.std(vals, axis=0) / np.sqrt(len(vals)),
-                "n_days": len(vals),
-            }
+    labels = psi_df["tercile"].astype(object).values
+    g_bands = block_bootstrap_group_mean_bands(
+        psi_vals, labels, ["low", "mid", "high"],
+        block_length=27, B=1000, seed=42,
+    )
+    for tercile, b in g_bands.items():
+        results[tercile] = {
+            "R_grid": R_grid,
+            "mean_psi": b["mean"],
+            "se_psi": b["se_boot"],
+            "lo_psi": b["lo"],
+            "hi_psi": b["hi"],
+            "n_days": b["n_days"],
+        }
 
     return results, psi_df
 
-# Component 2: Panel Regressions: Π_{k,t}^j on Venue dummy + state variables + interactions
-def run_cumulant_panel_regressions(premia_df, Z_df, z_cols=None, nw_lags=10):
+# Component 2: Cumulant Premium Panel Regressions: Π_{k,t}^j on Venue dummy + state variables + interactions
+def driscoll_kraay_ols(y, X, dates, maxlags=27):
+    from scipy import stats as _stats
+
+    y = np.asarray(y, dtype=float)
+    X = np.asarray(X, dtype=float)
+    dates = pd.to_datetime(pd.Series(dates)).values
+
+    XtX_inv = np.linalg.inv(X.T @ X)
+    beta = XtX_inv @ (X.T @ y)
+    resid = y - X @ beta
+
+    # Date-level summed scores
+    score = X * resid[:, None]
+    score_df = pd.DataFrame(score)
+    score_df["date"] = dates
+    h = score_df.groupby("date").sum().sort_index().values  # T_dates × k
+
+    T = h.shape[0]
+    L = min(maxlags, T - 1)
+    S = h.T @ h
+    for lag in range(1, L + 1):
+        w = 1.0 - lag / (L + 1.0)
+        gamma = h[lag:].T @ h[:-lag]
+        S += w * (gamma + gamma.T)
+
+    V = XtX_inv @ S @ XtX_inv
+    se = np.sqrt(np.diag(V))
+    t_stat = beta / se
+    df_resid = T - X.shape[1]
+    p_val = 2.0 * _stats.t.sf(np.abs(t_stat), df=max(df_resid, 1))
+
+    ss_res = float(resid @ resid)
+    ss_tot = float(((y - y.mean()) ** 2).sum())
+    r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else np.nan
+
+    return {"params": beta, "bse": se, "tvalues": t_stat, "pvalues": p_val,
+            "rsquared": r2, "nobs": len(y), "n_dates": T, "maxlags": L}
+
+def run_matched_difference_regressions(premia_df, Z_df, z_cols=None, nw_lags=27):
+    premia = premia_df.copy()
+    premia["date"] = pd.to_datetime(premia["date"])
+    Z = Z_df.copy()
+    Z["date"] = pd.to_datetime(Z["date"])
+    if z_cols is None:
+        z_cols = [c for c in Z.columns if c != "date"]
+
+    wide = premia.pivot_table(index="date", columns="venue",
+                              values=["Pi_2", "Pi_3", "Pi_4"])
+    results = {}
+    panels = {}
+    for dep_var in ["Pi_2", "Pi_3", "Pi_4"]:
+        try:
+            delta = (wide[(dep_var, "DER")] - wide[(dep_var, "CME")]).dropna()
+        except KeyError:
+            continue
+        df_k = delta.rename("delta").reset_index().merge(
+            Z[["date"] + z_cols], on="date", how="inner"
+        ).dropna(subset=["delta"] + z_cols).sort_values("date")
+
+        y = df_k["delta"].values
+        X = sm.add_constant(df_k[z_cols].values)
+        res = sm.OLS(y, X).fit(cov_type="HAC", cov_kwds={"maxlags": nw_lags})
+        res.col_names = ["const (venue wedge)"] + z_cols
+        results[dep_var] = res
+        panels[dep_var] = df_k
+    return results, panels
+
+def run_cumulant_panel_regressions(premia_df, Z_df, z_cols=None, nw_lags=27,
+                                   driscoll_kraay=True, matched_only=True):
     premia = premia_df.copy()
     premia["date"] = pd.to_datetime(premia["date"])
     Z = Z_df.copy()
@@ -95,6 +175,12 @@ def run_cumulant_panel_regressions(premia_df, Z_df, z_cols=None, nw_lags=10):
 
     # Merge
     panel = premia.merge(Z, on="date", how="inner")
+
+    # Balanced matched panel
+    if matched_only:
+        counts = panel.groupby("date")["venue"].nunique()
+        both = counts[counts == 2].index
+        panel = panel[panel["date"].isin(both)].copy()
 
     # Venue dummy
     panel["DER"] = (panel["venue"] == "DER").astype(float)
@@ -115,13 +201,32 @@ def run_cumulant_panel_regressions(premia_df, Z_df, z_cols=None, nw_lags=10):
         valid = ~(np.isnan(y) | np.any(np.isnan(X), axis=1))
         y_clean = y[valid]
         X_clean = X[valid]
+        dates_clean = panel.loc[valid, "date"].values
 
-        model = sm.OLS(y_clean, X_clean)
-        res = model.fit(cov_type="HAC", cov_kwds={"maxlags": nw_lags})
-        res.col_names = col_names
+        if driscoll_kraay:
+            dk = driscoll_kraay_ols(y_clean, X_clean, dates_clean, maxlags=nw_lags)
+            res = _DKResult(dk, col_names)
+        else:
+            # Legacy stacked-panel HAC — comparison only; SEs unreliable
+            # (ignores contemporaneous cross-venue correlation).
+            model = sm.OLS(y_clean, X_clean)
+            res = model.fit(cov_type="HAC", cov_kwds={"maxlags": nw_lags})
+            res.col_names = col_names
         results[dep_var] = res
 
     return results, panel
+
+class _DKResult:
+    def __init__(self, dk, col_names):
+        self.params = dk["params"]
+        self.bse = dk["bse"]
+        self.tvalues = dk["tvalues"]
+        self.pvalues = dk["pvalues"]
+        self.rsquared = dk["rsquared"]
+        self.nobs = dk["nobs"]
+        self.n_dates = dk["n_dates"]
+        self.maxlags = dk["maxlags"]
+        self.col_names = col_names
 
 def format_regression_table(results, dep_vars=None):
     if dep_vars is None:
@@ -195,25 +300,31 @@ def compute_regional_mfk(psi_df, R_grid, tercile_col="tercile"):
 
     regional_df = pd.DataFrame(records)
 
-    # Summary table
-    summary_rows = []
+    # Summary table with block-bootstrap inference (block = 27 days)
+    regional_df = regional_df.sort_values("date").reset_index(drop=True)
+    vals = regional_df[["psi_down", "psi_mid", "psi_up"]].values.astype(float)
+    labels = regional_df["tercile"].astype(object).values
 
-    def _agg(v, regime):
+    def _row(regime, band, n_days):
         return {
-            "regime": regime,
-            "n_days": len(v),
-            "mean_down": v["psi_down"].mean(),
-            "mean_mid": v["psi_mid"].mean(),
-            "mean_up": v["psi_up"].mean(),
-            "se_down": v["psi_down"].std() / np.sqrt(len(v)),
-            "se_mid": v["psi_mid"].std() / np.sqrt(len(v)),
-            "se_up": v["psi_up"].std() / np.sqrt(len(v)),
+            "regime": regime, "n_days": n_days,
+            "mean_down": band["mean"][0], "mean_mid": band["mean"][1], "mean_up": band["mean"][2],
+            "se_down": band["se_boot"][0], "se_mid": band["se_boot"][1], "se_up": band["se_boot"][2],
+            "lo_down": band["lo"][0], "hi_down": band["hi"][0],
+            "lo_mid": band["lo"][1], "hi_mid": band["hi"][1],
+            "lo_up": band["lo"][2], "hi_up": band["hi"][2],
         }
 
-    summary_rows.append(_agg(regional_df, "unconditional"))
+    summary_rows = []
+    uncond = block_bootstrap_mean_bands(vals, block_length=27, B=1000, seed=42)
+    summary_rows.append(_row("unconditional", uncond, uncond["n_days"]))
+
+    g_bands = block_bootstrap_group_mean_bands(
+        vals, labels, ["low", "mid", "high"], block_length=27, B=1000, seed=42,
+    )
     for tercile in ["low", "mid", "high"]:
-        mask = regional_df["tercile"] == tercile
-        if mask.sum() > 0:
-            summary_rows.append(_agg(regional_df[mask], tercile))
+        if tercile in g_bands:
+            b = g_bands[tercile]
+            summary_rows.append(_row(tercile, b, b["n_days"]))
 
     return regional_df, pd.DataFrame(summary_rows)

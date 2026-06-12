@@ -11,8 +11,9 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from pathlib import Path
-from src.config import get_path, SAMPLE
-from src.cross_venue.cross_venue import (compute_conditional_mfk, run_cumulant_panel_regressions)
+from src.config import get_path, SAMPLE, get_return_grid
+from src.cross_venue.cross_venue import (compute_conditional_mfk, run_cumulant_panel_regressions,
+                                         run_matched_difference_regressions)
 from src.cross_venue.cross_venue import (format_regression_table, compute_regional_mfk)
 
 SAMPLE_START = pd.to_datetime(SAMPLE["start_date"])
@@ -33,7 +34,7 @@ plt.rcParams["axes.grid"] = True
 plt.rcParams["grid.alpha"] = 0.3
 plt.rcParams["font.size"] = 11
 
-R_GRID = np.linspace(0.40, 1.60, 500)
+R_GRID = get_return_grid()
 
 def run_phase5():
     print("\n" + "=" * 60)
@@ -66,8 +67,8 @@ def run_phase5():
 
     _plot_conditional_mfk(mfk_results)
 
-    # Component 2: Panel Regressions
-    print("\n  Component 2: Cumulant premium panel regressions...")
+    # Component 2: Venue-wedge regressions
+    print("\n  Component 2: Cumulant premium regressions...")
 
     premia = pd.read_parquet(PHASE4_DIR / "cumulant_premia.parquet")
     premia["date"] = pd.to_datetime(premia["date"])
@@ -76,14 +77,40 @@ def run_phase5():
     z_cols = ["Z_IVS_1", "rv", "fng"]
     Z_reg = Z_crypto[["date"] + z_cols].copy()
 
-    reg_results, panel = run_cumulant_panel_regressions(
-        premia, Z_reg, z_cols=z_cols, nw_lags=10,
+    print("\n  (2a) Matched-difference regressions (HEADLINE, NW lags=27):")
+    diff_results, diff_panels = run_matched_difference_regressions(
+        premia, Z_reg, z_cols=z_cols, nw_lags=27,
     )
+    diff_table = format_regression_table(diff_results)
+    diff_table.to_csv(TAB_DIR / "matched_difference_regressions.csv", index=False)
+    for dep in ["Pi_2", "Pi_3", "Pi_4"]:
+        res = diff_results[dep]
+        print(f"\n    Δ{dep} (n={int(res.nobs)}):")
+        for i, name in enumerate(res.col_names):
+            stars = _stars_fn(res.pvalues[i])
+            print(f"      {name:>22s}: {res.params[i]:+.5f} "
+                  f"({res.bse[i]:.5f}) [{res.tvalues[i]:+.3f}]{stars}")
+        print(f"      {'R²':>22s}: {res.rsquared:.4f}")
 
+    # (2b) Secondary: pooled matched panel with Driscoll-Kraay errors
+    print("\n  (2b) Pooled panel, Driscoll-Kraay (secondary):")
+    reg_results, panel = run_cumulant_panel_regressions(
+        premia, Z_reg, z_cols=z_cols, nw_lags=27,
+        driscoll_kraay=True, matched_only=True,
+    )
     reg_table = format_regression_table(reg_results)
-    reg_table.to_csv(TAB_DIR / "panel_regressions.csv", index=False)
+    reg_table.to_csv(TAB_DIR / "panel_regressions_dk.csv", index=False)
 
-    print("\n  Panel regression results:")
+    # (2c) Legacy stacked-panel HAC — kept ONLY for comparison with the old
+    print("\n  (2c) Legacy stacked-panel HAC (comparison only):")
+    legacy_results, _ = run_cumulant_panel_regressions(
+        premia, Z_reg, z_cols=z_cols, nw_lags=10,
+        driscoll_kraay=False, matched_only=False,
+    )
+    legacy_table = format_regression_table(legacy_results)
+    legacy_table.to_csv(TAB_DIR / "panel_regressions.csv", index=False)
+
+    print("\n  Pooled panel (Driscoll-Kraay) results:")
     for dep in ["Pi_2", "Pi_3", "Pi_4"]:
         res = reg_results[dep]
         print(f"\n    {dep}:")
@@ -93,8 +120,12 @@ def run_phase5():
                   f"({res.bse[i]:.5f}) [{res.tvalues[i]:+.3f}]{stars}")
         print(f"      {'R²':>15s}: {res.rsquared:.4f}")
         print(f"      {'N':>15s}: {int(res.nobs)}")
+    print("\n  [NOTE] LaTeX: the venue-wedge claims should cite "
+          "matched_difference_regressions.csv (headline) and "
+          "panel_regressions_dk.csv (secondary). panel_regressions.csv is the "
+          "legacy estimator, retained for comparison only.")
 
-    _plot_venue_coefficients(reg_results)
+    _plot_venue_coefficients(diff_results, wedge_name="const (venue wedge)")
 
     # Component 3: Regional MFK 
     print("\n  Component 3: Regional MFK integration...")
@@ -133,20 +164,20 @@ def _plot_conditional_mfk(mfk_results):
     ax.plot(R, d["mean_psi"], color="grey", ls="--", lw=1.0, alpha=0.6,
             label=f"Unconditional (n={d['n_days']})")
 
-    # Terciles as primary content
+    # Terciles as primary content (95% block-bootstrap bands)
     colors = {"low": "C0", "mid": "C1", "high": "C2"}
     for tercile in ["low", "mid", "high"]:
         if tercile in mfk_results:
             d = mfk_results[tercile]
             ax.plot(R, d["mean_psi"], color=colors[tercile], lw=1.5,
                     label=f"{tercile}-vol (n={d['n_days']})")
-            ax.fill_between(R, d["mean_psi"] - 1.96 * d["se_psi"],
-                            d["mean_psi"] + 1.96 * d["se_psi"],
-                            alpha=0.1, color=colors[tercile])
+            lo = d.get("lo_psi", d["mean_psi"] - 1.96 * d["se_psi"])
+            hi = d.get("hi_psi", d["mean_psi"] + 1.96 * d["se_psi"])
+            ax.fill_between(R, lo, hi, alpha=0.1, color=colors[tercile])
 
     ax.axhline(0, color="black", lw=0.5)
-    ax.axvspan(0.40, 0.90, alpha=0.05, color="red")
-    ax.axvspan(1.10, 1.60, alpha=0.05, color="green")
+    ax.axvspan(R[0], 0.90, alpha=0.05, color="red")
+    ax.axvspan(1.10, R[-1], alpha=0.05, color="green")
     ax.set_xlabel("Gross return $R$")
     ax.set_ylabel(r"$\Psi(R \mid \mathrm{tercile})$")
     ax.set_title("Conditional Microstructure Friction Kernel by Volatility Tercile")
@@ -155,8 +186,11 @@ def _plot_conditional_mfk(mfk_results):
     plt.savefig(FIG_DIR / "fig_mfk_conditional.png", dpi=150)
     plt.close()
 
-def _plot_venue_coefficients(reg_results):
-    """Bar chart of the DER venue dummy coefficient across the three regressions."""
+def _plot_venue_coefficients(reg_results, wedge_name="DER"):
+    """Bar chart of the venue wedge across the three regressions.
+
+    Works with both the legacy pooled panel (wedge_name='DER') and the
+    matched-difference headline (wedge_name='const (venue wedge)')."""
     fig, ax = plt.subplots(figsize=(10, 5))
 
     dep_vars = ["Pi_2", "Pi_3", "Pi_4"]
@@ -167,8 +201,7 @@ def _plot_venue_coefficients(reg_results):
     ses = []
     for dep in dep_vars:
         res = reg_results[dep]
-        # DER is index 1 (after const)
-        idx = res.col_names.index("DER")
+        idx = res.col_names.index(wedge_name)
         betas.append(res.params[idx])
         ses.append(1.96 * res.bse[idx])
 
@@ -182,7 +215,7 @@ def _plot_venue_coefficients(reg_results):
     # Add significance stars
     for i, dep in enumerate(dep_vars):
         res = reg_results[dep]
-        idx = res.col_names.index("DER")
+        idx = res.col_names.index(wedge_name)
         stars = _stars_fn(res.pvalues[idx])
         if stars:
             ax.text(i, betas[i] + ses[i] + 0.001, stars, ha="center", fontsize=12)
