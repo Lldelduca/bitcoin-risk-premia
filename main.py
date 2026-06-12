@@ -211,7 +211,7 @@ def phase_4_kernel():
 def phase_4_kernel_bootstrap(B=200, workers=6):
     """Block-bootstrap CIs for the tercile kernel coefficients.
     Heavy job — runs after Phase 4 kernel estimation."""
-    from run_phase3_bootstrap import run_bootstrap
+    from src.inference.run_phase3_bootstrap import run_bootstrap
     run_bootstrap(venues=["CME", "DER"], spec_name="crypto", B=B, workers=workers)
 
     tab_dir = Path("results") / "phase3" / "tables"
