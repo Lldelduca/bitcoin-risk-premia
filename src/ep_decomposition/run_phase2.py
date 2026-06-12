@@ -10,10 +10,12 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from pathlib import Path
-from src.config import get_path, SAMPLE
+from src.config import get_path, SAMPLE, get_return_grid
 
-from src.ep_decomposition.physical_density import (estimate_physical_density_almeida, estimate_physical_density_kde)
+from src.ep_decomposition.physical_density import (estimate_physical_density_almeida, estimate_physical_density_kde,
+estimate_physical_density_almeida_from_returns, estimate_physical_density_kde_from_returns,compute_overlapping_returns)
 from src.ep_decomposition.ep_decomposition import (compute_ep_decomposition, compute_ep_contributions)
+from src.inference.bootstrap_inference import block_bootstrap_statistic
 
 CLEAN_DIR = Path(get_path("cleaned_cme")).parent
 SURFACES_DIR = CLEAN_DIR.parent / "surfaces"
@@ -23,7 +25,10 @@ TAB_DIR = Path("results") / "phase2" / "tables"
 for d in [PHASE2_DIR, FIG_DIR, TAB_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
-R_GRID = np.linspace(0.40, 2.00, 1000)
+R_GRID = get_return_grid()  
+EP_BOOT_B = 500
+EP_BOOT_BLOCK = 54
+EP_BOOT_SEED = 42
 
 plt.rcParams["figure.figsize"] = (12, 5)
 plt.rcParams["axes.grid"] = True
@@ -67,6 +72,69 @@ def compute_average_rnd(rnds):
     if mass > 0:
         mean_q /= mass
     return mean_q
+
+def bootstrap_ep_inference(spot, q_by_venue, estimator="almeida", B=EP_BOOT_B, block_length=EP_BOOT_BLOCK, seed=EP_BOOT_SEED):
+    R_data = compute_overlapping_returns(spot, horizon=27)
+    n = len(R_data)
+    est_fn = (estimate_physical_density_almeida_from_returns if estimator == "almeida"
+              else estimate_physical_density_kde_from_returns)
+    venues = list(q_by_venue.keys())
+
+    def stat_fn(idx):
+        R_b = np.asarray(R_data)[idx]
+        p_b = est_fn(R_b, R_GRID).p_R
+        out = [float(np.mean(R_b) - 1.0)]
+        for v in venues:
+            d = compute_ep_decomposition(R_GRID, q_by_venue[v], p_b, venue=v)
+            c = compute_ep_contributions(d)
+            out += [d.total_ep,
+                    c["downside"]["contribution"],
+                    c["mid"]["contribution"],
+                    c["upside"]["contribution"]]
+        return np.array(out)
+
+    res = block_bootstrap_statistic(n, stat_fn, block_length=block_length,
+                                    B=B, seed=seed)
+    draws = res["draws"]
+
+    rows = [{
+        "estimator": "raw_moment", "venue": "ALL", "statistic": "total_ep",
+        "point": res["point"][0],
+        "ci_lo": res["lo"][0], "ci_hi": res["hi"][0],
+        "se_boot": res["se_boot"][0],
+        "B_effective": res["n_success"], "n_excluded": res["n_fail"],
+        "block_length": block_length, "n_returns": n,
+    }]
+    region_names = ["downside", "mid", "upside"]
+    for vi, v in enumerate(venues):
+        base = 1 + vi * 4
+        # Levels: total EP + regional contributions
+        for j, stat in enumerate(["total_ep"] + [f"{r}_contrib" for r in region_names]):
+            rows.append({
+                "estimator": estimator, "venue": v, "statistic": stat,
+                "point": res["point"][base + j],
+                "ci_lo": res["lo"][base + j], "ci_hi": res["hi"][base + j],
+                "se_boot": res["se_boot"][base + j],
+                "B_effective": res["n_success"], "n_excluded": res["n_fail"],
+                "block_length": block_length, "n_returns": n,
+            })
+        # Shares: derived from the level draws, excluding near-zero totals
+        tot = draws[:, base]
+        ok = np.abs(tot) > 1e-8
+        for j, r in enumerate(region_names):
+            sh = draws[ok, base + 1 + j] / tot[ok]
+            pt_tot = res["point"][base]
+            pt = (res["point"][base + 1 + j] / pt_tot) if abs(pt_tot) > 1e-10 else np.nan
+            rows.append({
+                "estimator": estimator, "venue": v, "statistic": f"{r}_share",
+                "point": pt,
+                "ci_lo": np.quantile(sh, 0.025), "ci_hi": np.quantile(sh, 0.975),
+                "se_boot": sh.std(ddof=1),
+                "B_effective": int(ok.sum()),
+                "n_excluded": res["n_fail"] + int((~ok).sum()),
+                "block_length": block_length, "n_returns": n,
+            })
+    return pd.DataFrame(rows)
 
 def run_phase2():
     print("\n" + "=" * 60)
@@ -127,6 +195,30 @@ def run_phase2():
             "upside_share": c["upside"]["share"],
         })
     pd.DataFrame(summary_rows).to_csv(TAB_DIR / "ep_decomposition_summary.csv", index=False)
+
+    # Block-bootstrap inference for total EP and regional contributions. The raw-moment total EP is also
+    print(f"\n  Block-bootstrap EP inference "
+          f"(B={EP_BOOT_B}, block={EP_BOOT_BLOCK} days, "
+          f"~{p_almeida.n_returns // 27} effectively independent return obs)...")
+    boot_tables = []
+    q_by_venue = {"CME": q_cme, "DER": q_der}
+    for est in ["almeida", "kde"]:
+        bt = bootstrap_ep_inference(spot, q_by_venue, estimator=est)
+        boot_tables.append(bt)
+        for v in q_by_venue:
+            r = bt[(bt["venue"] == v) & (bt["statistic"] == "total_ep")].iloc[0]
+            print(f"    [{est:>7s}] {v}: total EP = {r['point']:+.4f} "
+                  f"[{r['ci_lo']:+.4f}, {r['ci_hi']:+.4f}] "
+                  f"(se = {r['se_boot']:.4f}, B_eff = {int(r['B_effective'])})")
+    boot_df = pd.concat(boot_tables, ignore_index=True)
+
+    boot_df = boot_df.drop_duplicates(subset=["estimator", "venue", "statistic"])
+    boot_df.to_csv(TAB_DIR / "ep_bootstrap_ci.csv", index=False)
+    raw = boot_df[boot_df["estimator"] == "raw_moment"].iloc[0]
+    print(f"    [raw moment] ALL: total EP = {raw['point']:+.4f} "
+          f"[{raw['ci_lo']:+.4f}, {raw['ci_hi']:+.4f}] "
+          f"(no density estimation; anchors the estimator-distortion gap)")
+    print(f"  Saved: {TAB_DIR / 'ep_bootstrap_ci.csv'}")
 
     np.savez(
         PHASE2_DIR / "phase2_densities.npz",
@@ -221,3 +313,4 @@ def _plot_kernels(results):
 
 if __name__ == "__main__":
     run_phase2()
+    

@@ -7,6 +7,7 @@ given the risk-neutral density q^j(R) and the physical density p(R)
 """
 
 import numpy as np
+from scipy.integrate import cumulative_trapezoid
 from typing import NamedTuple
 
 class EPDecomposition(NamedTuple):
@@ -25,9 +26,7 @@ def compute_ep_decomposition(R_grid: np.ndarray, q_R: np.ndarray, p_R: np.ndarra
     ep = (p_R - q_R) * R_grid
 
     # Cumulative EP via trapezoidal quadrature
-    cep = np.zeros_like(R_grid)
-    for i in range(1, len(R_grid)):
-        cep[i] = np.trapezoid(ep[:i+1], R_grid[:i+1])
+    cep = np.concatenate([[0.0], cumulative_trapezoid(ep, R_grid)])
 
     # Total EP = integral over full domain
     total_ep = cep[-1]

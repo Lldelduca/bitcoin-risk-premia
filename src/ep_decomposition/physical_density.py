@@ -101,8 +101,14 @@ def _splice_and_normalize(R_grid, p_body, R_data, lower_pct=10, upper_pct=90, ta
 def estimate_physical_density_almeida(
     spot: np.ndarray, R_grid: np.ndarray, horizon: int = 27, n_bins: int = 12, poly_order: int = 10, lower_pct: int = 10, 
     upper_pct: int = 90) -> PhysicalDensity:
-
     R_data = compute_overlapping_returns(spot, horizon)
+    return estimate_physical_density_almeida_from_returns(
+        R_data, R_grid, n_bins=n_bins, poly_order=poly_order,
+        lower_pct=lower_pct, upper_pct=upper_pct)
+
+def estimate_physical_density_almeida_from_returns(
+    R_data: np.ndarray, R_grid: np.ndarray, n_bins: int = 12, poly_order: int = 10, lower_pct: int = 10,
+    upper_pct: int = 90) -> PhysicalDensity:
 
     # Step 1: histogram density estimate
     counts, bin_edges = np.histogram(R_data, bins=n_bins, density=True)
@@ -131,11 +137,15 @@ def estimate_physical_density_almeida(
 
     return PhysicalDensity(R_grid=R_grid, p_R=p_R, method="almeida", n_returns=len(R_data), bandwidth=None)
 
-# Estimator 2: Gaussian KDE with Sheather-Jones bandwidth
+# Estimator 2: Gaussian KDE
 def estimate_physical_density_kde(
     spot: np.ndarray, R_grid: np.ndarray, horizon: int = 27, lower_pct: int = 10, upper_pct: int = 90) -> PhysicalDensity:
-
     R_data = compute_overlapping_returns(spot, horizon)
+    return estimate_physical_density_kde_from_returns(
+        R_data, R_grid, lower_pct=lower_pct, upper_pct=upper_pct)
+
+def estimate_physical_density_kde_from_returns(
+    R_data: np.ndarray, R_grid: np.ndarray, lower_pct: int = 10, upper_pct: int = 90) -> PhysicalDensity:
 
     # Gaussian KDE with Scott's rule (approximates Sheather-Jones for large n)
     kde = stats.gaussian_kde(R_data, bw_method="scott")
