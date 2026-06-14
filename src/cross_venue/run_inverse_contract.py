@@ -1,0 +1,156 @@
+"""
+Runs the coin-margined (inverse) contract numeraire prediction on the real matched-day CME densities
+
+Compares the predicted Deribit-minus-CME cumulant-premium wedge against the measured wedge from Phase 4.
+
+"""
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from pathlib import Path
+
+from src.config import get_path, get_return_grid, SAMPLE
+from src.cross_venue.inverse_contract import (contributions_from_density, tilt_to_inverse_measure, predict_inverse_wedge)
+from src.inference.bootstrap_inference import block_bootstrap_statistic
+
+SURFACES_DIR = Path(get_path("cleaned_cme")).parent.parent / "surfaces"
+COND_DIR = Path(get_path("cleaned_cme")).parent.parent / "conditioning"
+PHASE4_TAB = Path("results") / "phase4" / "tables"
+FIG_DIR = Path("results") / "phase5" / "figures"
+TAB_DIR = Path("results") / "phase5" / "tables"
+FIG_DIR.mkdir(parents=True, exist_ok=True)
+TAB_DIR.mkdir(parents=True, exist_ok=True)
+
+R_GRID = get_return_grid()
+TAU_DAYS = 27
+THETA = 2.0
+KAPPA_BOUND = 1.5  # matches Phase 4 headline truncation
+BOOT_B = 1000
+BOOT_BLOCK = 27
+
+def _load_matched_densities():
+    cme = pd.read_parquet(SURFACES_DIR / "rnd_CME_densities.parquet")
+    der = pd.read_parquet(SURFACES_DIR / "rnd_DER_densities.parquet")
+    for d in (cme, der):
+        d["date"] = pd.to_datetime(d["date"])
+    cme = cme[cme["tau_days"] == TAU_DAYS].set_index("date").sort_index()
+    der = der[der["tau_days"] == TAU_DAYS].set_index("date").sort_index()
+
+    matched = cme.index.intersection(der.index)
+    q_cme_rows, q_der_rows = [], []
+    for date in matched:
+        R_c = np.asarray(cme.loc[date, "returns"])
+        q_c = np.asarray(cme.loc[date, "density"])
+        R_d = np.asarray(der.loc[date, "returns"])
+        q_d = np.asarray(der.loc[date, "density"])
+        q_cme_rows.append(np.interp(R_GRID, R_c, q_c, left=1e-20, right=1e-20))
+        q_der_rows.append(np.interp(R_GRID, R_d, q_d, left=1e-20, right=1e-20))
+    return (np.array(matched), np.vstack(q_cme_rows), np.vstack(q_der_rows))
+
+def run_inverse_contract():
+    print("\n" + "=" * 60)
+    print("  Phase 5 extension: Inverse-Contract Numeraire Prediction")
+    print(f"  Window: {SAMPLE['start_date']} -> {SAMPLE['end_date']}")
+    print(f"  theta = {THETA}; kappa bound = {KAPPA_BOUND}; tau = {TAU_DAYS}d")
+    print("=" * 60)
+
+    dates, Q_CME, Q_DER = _load_matched_densities()
+    n = len(dates)
+    print(f"\n  Matched CME-Deribit density days: {n}")
+
+    # Per-day predicted vs measured wedge
+    rows_pred, rows_meas, daily = [], [], []
+    for i in range(n):
+        cme = contributions_from_density(R_GRID, Q_CME[i], THETA, KAPPA_BOUND)
+        der = contributions_from_density(R_GRID, Q_DER[i], THETA, KAPPA_BOUND)
+        q_pred = tilt_to_inverse_measure(R_GRID, Q_CME[i])
+        der_pred = contributions_from_density(R_GRID, q_pred, THETA, KAPPA_BOUND)
+        rows_pred.append([der_pred[f"Pi_{k}"] for k in (2, 3, 4)])
+        rows_meas.append([der[f"Pi_{k}"] - cme[f"Pi_{k}"] for k in (2, 3, 4)])
+        daily.append({
+            "date": dates[i],
+            **{f"pred_wedge_Pi_{k}": der_pred[f"Pi_{k}"] - cme[f"Pi_{k}"] for k in (2, 3, 4)},
+            **{f"meas_wedge_Pi_{k}": der[f"Pi_{k}"] - cme[f"Pi_{k}"] for k in (2, 3, 4)},
+        })
+    pred_wedge = np.array(rows_pred) - np.array([[contributions_from_density(
+        R_GRID, Q_CME[i], THETA, KAPPA_BOUND)[f"Pi_{k}"] for k in (2, 3, 4)]
+        for i in range(n)])
+    meas_wedge = np.array(rows_meas)
+    daily_df = pd.DataFrame(daily)
+    daily_df.to_csv(TAB_DIR / "inverse_contract_daily.csv", index=False)
+
+    # Block-bootstrap CIs on the mean predicted and measured wedges
+    def stat_fn(idx):
+        return np.concatenate([pred_wedge[idx].mean(0), meas_wedge[idx].mean(0)])
+    res = block_bootstrap_statistic(n, stat_fn, block_length=BOOT_BLOCK,
+                                    B=BOOT_B, seed=42)
+
+    summary = []
+    for j, k in enumerate((2, 3, 4)):
+        summary.append({
+            "cumulant": f"Pi_{k}",
+            "predicted_wedge": res["point"][j],
+            "pred_ci_lo": res["lo"][j], "pred_ci_hi": res["hi"][j],
+            "measured_wedge": res["point"][3 + j],
+            "meas_ci_lo": res["lo"][3 + j], "meas_ci_hi": res["hi"][3 + j],
+            "residual": res["point"][3 + j] - res["point"][j],
+            "n_days": n, "block_length": BOOT_BLOCK, "B": res["n_success"],
+        })
+    summary_df = pd.DataFrame(summary)
+    summary_df.to_csv(TAB_DIR / "inverse_contract_wedge.csv", index=False)
+
+    print("\n  Predicted vs measured cumulant-premium wedge (DER - CME):")
+    print(f"    {'':6s} {'predicted':>22s} {'measured':>22s} {'residual':>10s}")
+    for r in summary:
+        print(f"    {r['cumulant']:6s} "
+              f"{r['predicted_wedge']:+.5f} "
+              f"[{r['pred_ci_lo']:+.4f},{r['pred_ci_hi']:+.4f}] "
+              f"{r['measured_wedge']:+.5f} "
+              f"[{r['meas_ci_lo']:+.4f},{r['meas_ci_hi']:+.4f}] "
+              f"{r['residual']:+.5f}")
+
+    # Sign-agreement diagnostic
+    sign_pred = np.sign([r["predicted_wedge"] for r in summary])
+    sign_meas = np.sign([r["measured_wedge"] for r in summary])
+    agree = int((sign_pred == sign_meas).sum())
+    print(f"\n  Sign agreement: {agree}/3 cumulants. "
+          f"{'Contract design explains the wedge direction.' if agree == 3 else 'Contract design predicts the WRONG sign at ' + str(3 - agree) + ' of 3 orders — the friction is real and is masked by a mechanical effect of opposite sign.'}")
+
+    # Psi overlay decomposition figure: measured vs predicted vs residual
+    qbar_cme = Q_CME.mean(0)
+    qbar_der = Q_DER.mean(0)
+    eps = 1e-12
+    psi_measured = np.log(np.maximum(qbar_der, eps) / np.maximum(qbar_cme, eps))
+
+    psi_pred_rows = np.array([
+        np.log(np.maximum(tilt_to_inverse_measure(R_GRID, Q_CME[i]), eps)
+               / np.maximum(Q_CME[i], eps)) for i in range(n)])
+    psi_predicted = psi_pred_rows.mean(0)
+    psi_residual = psi_measured - psi_predicted
+
+    m = (R_GRID >= 0.5) & (R_GRID <= 1.8)
+    fig, ax = plt.subplots(figsize=(8.5, 5))
+    ax.axhline(0, color="0.6", lw=0.8, zorder=1)
+    ax.plot(R_GRID[m], psi_measured[m], color="C0", lw=1.8,
+            label=r"Measured $\Psi=\ln(q^{\mathrm{DER}}/q^{\mathrm{CME}})$", zorder=4)
+    ax.plot(R_GRID[m], psi_predicted[m], color="C3", lw=1.6, ls="--",
+            label=r"Contract-design prediction (inverse-measure tilt)", zorder=3)
+    ax.plot(R_GRID[m], psi_residual[m], color="C2", lw=1.4, ls=":",
+            label=r"Residual ($=$ measured $-$ predicted)", zorder=2)
+    ax.set_xlabel(r"Gross return $R$")
+    ax.set_ylabel(r"$\Psi(R)$")
+    ax.set_title("Cross-Venue Pricing-Kernel Wedge: Mechanical vs Residual",
+                 fontsize=12)
+    ax.legend(frameon=False, fontsize=9, loc="best")
+    fig.tight_layout()
+    fig.savefig(FIG_DIR / "fig_inverse_contract_psi.png", dpi=150)
+    plt.close(fig)
+    print(f"\n  Saved: {TAB_DIR / 'inverse_contract_wedge.csv'}")
+    print(f"  Saved: {TAB_DIR / 'inverse_contract_daily.csv'}")
+    print(f"  Saved: {FIG_DIR / 'fig_inverse_contract_psi.png'}")
+    print("\n  Inverse-contract extension complete.")
+    return summary_df
+
+if __name__ == "__main__":
+    run_inverse_contract()
