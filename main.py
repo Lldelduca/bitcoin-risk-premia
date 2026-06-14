@@ -105,6 +105,8 @@ def _check_parquet_rows(path, label="", min_rows=1):
 # Phase runners (each imports at call time to avoid import-order issues)
 def phase_1a_surfaces():
     """Fit SSVI surfaces for both venues; saves ssvi_params.parquet."""
+    import sys
+    sys.path.insert(0, str(Path.cwd()))
     from src.surfaces.fit_surfaces import fit_all_venues
     fit_all_venues()
 
@@ -126,6 +128,8 @@ def phase_1a_surfaces():
 
 def phase_1b_densities():
     """Extract RNDs from saved surfaces; saves rnd_*.parquet."""
+    import sys
+    sys.path.insert(0, str(Path.cwd()))
     from src.surfaces.extract_densities import extract_all_densities
     extract_all_densities()
 
@@ -137,6 +141,8 @@ def phase_1b_densities():
 
 def phase_1c_tensor():
     """CP tensor decomposition on both maturity grids with sign convention."""
+    import sys
+    sys.path.insert(0, str(Path.cwd()))
     from src.compression.run_tensor_pca import run_tensor_decomposition
     for grid in ["almeida", "broad"]:
         print(f"\n{'#' * 60}")
@@ -147,10 +153,12 @@ def phase_1c_tensor():
     from src.config import get_path
     surfaces_dir = Path(get_path("cleaned_cme")).parent.parent / "surfaces"
     _check_file(surfaces_dir / "tensor_pca_diagnostics.csv", "Almeida diagnostics")
-    _check_file(surfaces_dir / "Z_IVS.parquet", "Z_IVS factors")
+    _check_file(surfaces_dir / "tensor_pca_state.parquet", "Z_IVS state vector")
 
 def phase_2_conditioning():
     """Build conditioning vectors (Z_crypto, Z_macro, Z_full)."""
+    import sys
+    sys.path.insert(0, str(Path.cwd()))
     from src.conditioning.build_conditioning_vectors import build_conditioning_vectors
     build_conditioning_vectors()
 
@@ -167,6 +175,8 @@ def phase_2_conditioning():
 
 def phase_3_ep(spot_data=None):
     """Physical density estimation and equity premium decomposition."""
+    import sys
+    sys.path.insert(0, str(Path.cwd()))
     from src.ep_decomposition.run_phase2 import run_phase2
     run_phase2()
 
@@ -186,6 +196,8 @@ def phase_3_ep(spot_data=None):
 
 def phase_4_kernel():
     """Conditional pricing kernel estimation (new (b,c,d) parameterization)."""
+    import sys
+    sys.path.insert(0, str(Path.cwd()))
     from src.pricing_kernel.run_phase3 import run_phase3
     run_phase3()
 
@@ -211,6 +223,8 @@ def phase_4_kernel():
 def phase_4_kernel_bootstrap(B=200, workers=6):
     """Block-bootstrap CIs for the tercile kernel coefficients.
     Heavy job — runs after Phase 4 kernel estimation."""
+    import sys
+    sys.path.insert(0, str(Path.cwd()))
     from src.inference.run_phase3_bootstrap import run_bootstrap
     run_bootstrap(venues=["CME", "DER"], spec_name="crypto", B=B, workers=workers)
 
@@ -228,6 +242,8 @@ def phase_4_kernel_bootstrap(B=200, workers=6):
 
 def phase_5_bkm():
     """BKM moment extraction and CL20/CL24 cumulant decomposition."""
+    import sys
+    sys.path.insert(0, str(Path.cwd()))
     from src.moment_decomposition.run_phase4 import run_phase4
     run_phase4()
 
@@ -257,6 +273,8 @@ def phase_5_bkm():
 
 def phase_6_cross_venue():
     """Cross-venue MFK, panel regressions, regional decomposition."""
+    import sys
+    sys.path.insert(0, str(Path.cwd()))
     from src.cross_venue.run_phase5 import run_phase5
     run_phase5()
 
@@ -267,17 +285,17 @@ def phase_6_cross_venue():
                 "Driscoll-Kraay panel (secondary)")
 
     # Headline wedge verification
-    diff = pd.read_csv(tab_dir / "matched_difference_regressions.csv")
-    print("\n  Venue wedge (matched-difference, headline):")
-    for dep in ["Pi_2", "Pi_3", "Pi_4"]:
-        r = diff[diff["dep_var"] == dep] if "dep_var" in diff.columns else pd.DataFrame()
-        if len(r):
-            row = r.iloc[0]
-            p_val = row.get("pvalue_const", row.get("pvalue_0", None))
-            coef = row.get("coef_const", row.get("coef_0", None))
-            if coef is not None:
-                sig = "***" if p_val and p_val < 0.001 else ("**" if p_val and p_val < 0.01 else "")
-                print(f"    {dep}: β = {coef:+.5f}{sig}")
+    try:
+        diff = pd.read_csv(tab_dir / "matched_difference_regressions.csv")
+        wedge_rows = diff[diff["regressor"] == "const (venue wedge)"]
+        if len(wedge_rows):
+            print("\n  Venue wedge (matched-difference, headline):")
+            for _, row in wedge_rows.iterrows():
+                sig = row.get("stars", "")
+                print(f"    {row['dep_var']}: β = {row['coef']:+.5f} "
+                      f"(t = {row['t_stat']:+.3f}){sig}")
+    except Exception as e:
+        print(f"  [WARN] Could not parse wedge table: {e}")
 
 
 # Orchestrator

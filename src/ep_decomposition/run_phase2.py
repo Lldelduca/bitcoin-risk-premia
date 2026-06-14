@@ -39,6 +39,13 @@ def load_spot_prices():
     panel = pd.read_parquet(CLEAN_DIR / "auxiliary_panel.parquet")
     panel["date"] = pd.to_datetime(panel["date"])
     panel = panel.sort_values("date").dropna(subset=["btc_spot"])
+
+    # Restrict P-measure inputs to the sample window
+    mask = ((panel["date"] >= pd.to_datetime(SAMPLE["start_date"]))
+            & (panel["date"] <= pd.to_datetime(SAMPLE["end_date"])))
+    panel = panel.loc[mask]
+    print(f"  Spot window: {panel['date'].iloc[0].date()} -> "
+          f"{panel['date'].iloc[-1].date()} ({len(panel)} days)")
     return panel["btc_spot"].values
 
 def load_daily_rnds_from_parquet(venue, tau_days=27):
@@ -313,4 +320,3 @@ def _plot_kernels(results):
 
 if __name__ == "__main__":
     run_phase2()
-    
