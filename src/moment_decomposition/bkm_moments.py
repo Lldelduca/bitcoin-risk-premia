@@ -3,11 +3,11 @@ Bakshi-Kapadia-Madan (2003) Risk-Neutral Moment Extraction.
 
 Computes the risk-neutral variance, cubic contract, and quartic contract from OTM option prices evaluated on the fitted SSVI
 
-  V_t = integral of [2(1 - ln(K/S)) / K^2] * OTM(K) dK
+  V_t = integral of [2(1 - ln(K/F)) / K^2] * OTM(K) dK
 
-  W_t = integral of [6 ln(K/S) - 3 ln(K/S)^2] / K^2 * OTM(K) dK
+  W_t = integral of [6 ln(K/F) - 3 ln(K/F)^2] / K^2 * OTM(K) dK
 
-  X_t = integral of [12 ln(K/S)^2 - 4 ln(K/S)^3] / K^2 * OTM(K) dK
+  X_t = integral of [12 ln(K/F)^2 - 4 ln(K/F)^3] / K^2 * OTM(K) dK
 
 From these, the risk-neutral moments are:
 

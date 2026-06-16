@@ -133,6 +133,13 @@ def process_funding_differential():
     hl = fetch_hl_funding()
     der = fetch_deribit_perp_funding()
 
+    # Save the standalone full-history Deribit perpetual funding 
+    der_out = get_path("cleaned_auxiliary").parent / "funding_deribit.parquet"
+    der.to_parquet(der_out, index=False)
+    print(f"  Saved standalone Deribit perpetual funding to {der_out} "
+          f"({der['date'].min().date()} -> {der['date'].max().date()}, "
+          f"{len(der):,} days)")
+
     df = pd.merge(hl, der, on="date", how="inner")
     df["delta_f_hl_der"] = df["funding_hl_annual"] - df["funding_der_annual"]
 

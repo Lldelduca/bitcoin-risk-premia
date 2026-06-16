@@ -19,7 +19,7 @@ by a single preference parameter theta (relative prudence / higher-order risk av
     lambda_3 =  (theta + 1)(theta + 2) / 12 (kurtosis weight, > 0)
 
 theta = 2 (log/power-utility baseline used by CL20) gives
-    lambda_1 = 1, lambda_2 = -1, lambda_3 = 1/2.
+    lambda_1 = 1, lambda_2 = -1, lambda_3 = 1.
 
 We also compute a secondary diagnostic: The classic Bollerslev-type variance risk premium
 
