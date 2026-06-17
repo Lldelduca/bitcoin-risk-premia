@@ -1,5 +1,5 @@
 """
-Runs the coin-margined (inverse) contract numeraire prediction on the real matched-day CME densities
+Runs the coin-margined (inverse) contract numeraire prediction
 
 Compares the predicted Deribit-minus-CME cumulant-premium wedge against the measured wedge from Phase 4.
 
@@ -22,10 +22,14 @@ TAB_DIR = Path("results") / "phase5" / "tables"
 FIG_DIR.mkdir(parents=True, exist_ok=True)
 TAB_DIR.mkdir(parents=True, exist_ok=True)
 
+
 R_GRID = get_return_grid()
+KAPPA_MAX = 1.5
+R_GRID_WIDE = np.linspace(np.exp(-(KAPPA_MAX + 0.1)), np.exp(KAPPA_MAX + 0.1), 2000)
+
 TAU_DAYS = 27
 THETA = 2.0
-KAPPA_BOUND = 1.5  # matches Phase 4 headline truncation
+KAPPA_BOUND = 1.5 
 BOOT_B = 1000
 BOOT_BLOCK = 27
 
@@ -44,8 +48,8 @@ def _load_matched_densities():
         q_c = np.asarray(cme.loc[date, "density"])
         R_d = np.asarray(der.loc[date, "returns"])
         q_d = np.asarray(der.loc[date, "density"])
-        q_cme_rows.append(np.interp(R_GRID, R_c, q_c, left=1e-20, right=1e-20))
-        q_der_rows.append(np.interp(R_GRID, R_d, q_d, left=1e-20, right=1e-20))
+        q_cme_rows.append(np.interp(R_GRID_WIDE, R_c, q_c, left=1e-20, right=1e-20))
+        q_der_rows.append(np.interp(R_GRID_WIDE, R_d, q_d, left=1e-20, right=1e-20))
     return (np.array(matched), np.vstack(q_cme_rows), np.vstack(q_der_rows))
 
 def run_inverse_contract():
@@ -53,6 +57,9 @@ def run_inverse_contract():
     print("  Phase 5 extension: Inverse-Contract Numeraire Prediction")
     print(f"  Window: {SAMPLE['start_date']} -> {SAMPLE['end_date']}")
     print(f"  theta = {THETA}; kappa bound = {KAPPA_BOUND}; tau = {TAU_DAYS}d")
+    print(f"  BKM grid: R in [{R_GRID_WIDE[0]:.3f}, {R_GRID_WIDE[-1]:.3f}] "
+          f"({len(R_GRID_WIDE)} pts, |ln R| up to "
+          f"{np.abs(np.log(R_GRID_WIDE[[0,-1]])).max():.2f})")
     print("=" * 60)
 
     dates, Q_CME, Q_DER = _load_matched_densities()
@@ -60,23 +67,26 @@ def run_inverse_contract():
     print(f"\n  Matched CME-Deribit density days: {n}")
 
     # Per-day predicted vs measured wedge
-    rows_pred, rows_meas, daily = [], [], []
+    pred_wedge = np.empty((n, 3))
+    meas_wedge = np.empty((n, 3))
+    daily = []
     for i in range(n):
-        cme = contributions_from_density(R_GRID, Q_CME[i], THETA, KAPPA_BOUND)
-        der = contributions_from_density(R_GRID, Q_DER[i], THETA, KAPPA_BOUND)
-        q_pred = tilt_to_inverse_measure(R_GRID, Q_CME[i])
-        der_pred = contributions_from_density(R_GRID, q_pred, THETA, KAPPA_BOUND)
-        rows_pred.append([der_pred[f"Pi_{k}"] for k in (2, 3, 4)])
-        rows_meas.append([der[f"Pi_{k}"] - cme[f"Pi_{k}"] for k in (2, 3, 4)])
+        cme_i = contributions_from_density(R_GRID_WIDE, Q_CME[i], THETA, KAPPA_BOUND)
+        der_i = contributions_from_density(R_GRID_WIDE, Q_DER[i], THETA, KAPPA_BOUND)
+
+        q_pred = tilt_to_inverse_measure(R_GRID_WIDE, Q_CME[i])
+        der_pred_i = contributions_from_density(R_GRID_WIDE, q_pred, THETA, KAPPA_BOUND)
+
+        for j, k in enumerate((2, 3, 4)):
+            pred_wedge[i, j] = der_pred_i[f"Pi_{k}"] - cme_i[f"Pi_{k}"]
+            meas_wedge[i, j] = der_i[f"Pi_{k}"] - cme_i[f"Pi_{k}"]
         daily.append({
             "date": dates[i],
-            **{f"pred_wedge_Pi_{k}": der_pred[f"Pi_{k}"] - cme[f"Pi_{k}"] for k in (2, 3, 4)},
-            **{f"meas_wedge_Pi_{k}": der[f"Pi_{k}"] - cme[f"Pi_{k}"] for k in (2, 3, 4)},
+            **{f"pred_wedge_Pi_{k}": pred_wedge[i, j]
+               for j, k in enumerate((2, 3, 4))},
+            **{f"meas_wedge_Pi_{k}": meas_wedge[i, j]
+               for j, k in enumerate((2, 3, 4))},
         })
-    pred_wedge = np.array(rows_pred) - np.array([[contributions_from_density(
-        R_GRID, Q_CME[i], THETA, KAPPA_BOUND)[f"Pi_{k}"] for k in (2, 3, 4)]
-        for i in range(n)])
-    meas_wedge = np.array(rows_meas)
     daily_df = pd.DataFrame(daily)
     daily_df.to_csv(TAB_DIR / "inverse_contract_daily.csv", index=False)
 
@@ -115,28 +125,33 @@ def run_inverse_contract():
     sign_meas = np.sign([r["measured_wedge"] for r in summary])
     agree = int((sign_pred == sign_meas).sum())
     print(f"\n  Sign agreement: {agree}/3 cumulants. "
-          f"{'Contract design explains the wedge direction.' if agree == 3 else 'Contract design predicts the WRONG sign at ' + str(3 - agree) + ' of 3 orders — the friction is real and is masked by a mechanical effect of opposite sign.'}")
+          f"{'Contract design explains the wedge direction.'if agree == 3 else 'Contract design predicts the WRONG sign at ' + str(3 - agree) + ' of 3 orders — the friction is real and amplified by a mechanical effect of opposite sign.'}")
 
-    # Psi overlay decomposition figure: measured vs predicted vs residual
-    qbar_cme = Q_CME.mean(0)
-    qbar_der = Q_DER.mean(0)
+    # Psi overlay figure 
     eps = 1e-12
-    psi_measured = np.log(np.maximum(qbar_der, eps) / np.maximum(qbar_cme, eps))
 
+    # Measured Psi_t = ln(q_CME_t / q_DER_t), averaged over matched days
+    psi_meas_rows = np.array([
+        np.log(np.maximum(Q_CME[i], eps) / np.maximum(Q_DER[i], eps))
+        for i in range(n)])
+    psi_measured = psi_meas_rows.mean(0)
+
+    # Predicted Psi_t = ln(q_CME_t / q_DER_pred_t), same direction as above
     psi_pred_rows = np.array([
-        np.log(np.maximum(tilt_to_inverse_measure(R_GRID, Q_CME[i]), eps)
-               / np.maximum(Q_CME[i], eps)) for i in range(n)])
+        np.log(np.maximum(Q_CME[i], eps)
+               / np.maximum(tilt_to_inverse_measure(R_GRID_WIDE, Q_CME[i]), eps))
+        for i in range(n)])
     psi_predicted = psi_pred_rows.mean(0)
     psi_residual = psi_measured - psi_predicted
 
-    m = (R_GRID >= 0.5) & (R_GRID <= 1.8)
+    m = (R_GRID_WIDE >= 0.5) & (R_GRID_WIDE <= 1.8)
     fig, ax = plt.subplots(figsize=(8.5, 5))
     ax.axhline(0, color="0.6", lw=0.8, zorder=1)
-    ax.plot(R_GRID[m], psi_measured[m], color="C0", lw=1.8,
-            label=r"Measured $\Psi=\ln(q^{\mathrm{DER}}/q^{\mathrm{CME}})$", zorder=4)
-    ax.plot(R_GRID[m], psi_predicted[m], color="C3", lw=1.6, ls="--",
+    ax.plot(R_GRID_WIDE[m], psi_measured[m], color="C0", lw=1.8,
+            label=r"Measured $\Psi=\ln(q^{\mathrm{CME}}/q^{\mathrm{DER}})$", zorder=4)
+    ax.plot(R_GRID_WIDE[m], psi_predicted[m], color="C3", lw=1.6, ls="--",
             label=r"Contract-design prediction (inverse-measure tilt)", zorder=3)
-    ax.plot(R_GRID[m], psi_residual[m], color="C2", lw=1.4, ls=":",
+    ax.plot(R_GRID_WIDE[m], psi_residual[m], color="C2", lw=1.4, ls=":",
             label=r"Residual ($=$ measured $-$ predicted)", zorder=2)
     ax.set_xlabel(r"Gross return $R$")
     ax.set_ylabel(r"$\Psi(R)$")

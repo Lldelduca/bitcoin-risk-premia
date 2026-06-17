@@ -1,23 +1,21 @@
 """
 Phase 5 explanatory extension.
 
-Deribit BTC options are coin-margined (inverse): payoff and margin are denominated in BTC, not USD. 
+Deribit BTC options are coin-margined (inverse): payoff and margin are denominated in BTC, not USD.
 The Deribit risk-neutral measure is therefore the BTC-numeraire measure Q^B, while CME (USD cash-settled) reveals the
 USD-numeraire measure Q^$. The two are linked by the change-of-numeraire Radon-Nikodym derivative:
 
-    dQ^B/dQ^$ |_T  =  S_T / F_{0,T}  =  R * e^{-r tau}       (R = S_T/S_0)
+    dQ^B/dQ^$ |_T  =  S_T / F_{0,T}  =  R                    (R = S_T / F_{0,T})
 
-i.e. the inverse contract reweights every terminal state by its own gross return R. In log-return space x = ln R this 
-is an exponential tilt with parameter exactly 1:
+In log-return space x = ln R this is an exponential tilt with parameter exactly 1:
 
     q^B(x) = e^{x} q^$(x) / E^$[e^{x}]  =  e^{x - mu_c} q^$(x).
 
-This module takes a measured CME risk-neutral density, applies the tilt to predict the Deribit density 
-WITH NO FREE PARAMETERS, pushes the predicted density through the same BKM log-return integrals (V, W, X) 
-and the same CL20 contribution weights used everywhere else in the pipeline, and returns
-the predicted cumulant-premium wedge Pi_k^{pred,DER} - Pi_k^{CME} for comparison with the measured wedge.
+This module takes a measured CME risk-neutral density, applies the tilt to predict the Deribit density, pushes the predicted 
+density through the same BKM log-return integrals (V, W, X) and the same CL20 contribution weights used everywhere else in 
+the pipeline, and returns the predicted cumulant-premium wedge Pi_k^{pred,DER} - Pi_k^{CME} for comparison with wedge.
 
-If the prediction matches the measured wedge, the cross-venue premium is mechanically explained by contract design. 
+If the prediction matches the measured wedge, the cross-venue premium is mechanically explained by contract design.
 If a residual survives, it isolates the part attributable to genuine frictions (funding, segmentation, margining costs).
 
 """

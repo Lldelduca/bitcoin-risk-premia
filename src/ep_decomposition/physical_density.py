@@ -4,7 +4,7 @@ Two estimators for the unconditional physical density p(R) of 27-day Bitcoin gro
   1. Almeida et al. (2026)
      Full-sample 27-day returns -> histogram body -> 10th-order polynomial smoothing -> GEV tails
 
-  2. Gaussian KDE with Sheather-Jones bandwidth 
+  2. Gaussian KDE with Scott's rule 
      Full-sample 27-day returns -> Gaussian KDE with plug-inbandwidth -> GPD tails
 
 """
