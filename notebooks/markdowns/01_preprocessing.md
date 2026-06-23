@@ -38,24 +38,39 @@ if funding is not None:
 
 
 ```python
+SAMPLE_START = pd.Timestamp('2020-01-13')
+SAMPLE_END   = pd.Timestamp('2023-08-31')
+
 daily_cme = cme.groupby('date').size().rename('CME')
 daily_der = der.groupby('date').size().rename('Deribit')
 
 fig, ax = plt.subplots(figsize=(13, 5))
 daily_der.plot(ax=ax, label='Deribit', alpha=0.7)
 daily_cme.plot(ax=ax, label='CME', alpha=0.7)
-ax.axvline(pd.Timestamp('2024-01-10'), color='red', linestyle='--',
-           label='Spot ETF approval (Jan 2024)')
+
+ax.axvspan(SAMPLE_START, SAMPLE_END, alpha=0.08, color='blue', label='Common sample window')
+ax.axvline(SAMPLE_START, color='navy', linestyle=':', linewidth=0.8, alpha=0.6)
+ax.axvline(SAMPLE_END, color='navy', linestyle=':', linewidth=0.8, alpha=0.6)
+
 ax.set_ylabel('Cleaned options per day')
+ax.set_xlabel('Date')
 ax.set_title('Daily option cross-section size by venue')
-ax.legend()
+ax.legend(loc='upper left')
 plt.tight_layout()
 plt.savefig(FIG_DIR / 'fig_daily_option_counts.png', dpi=150)
 plt.show()
 
-print("Median per day:")
+# Full data
+print("Median per day (full data):")
 print(f"  CME:     {daily_cme.median():>6.0f}")
 print(f"  Deribit: {daily_der.median():>6.0f}")
+
+# Common window only
+cw_cme = daily_cme[(daily_cme.index >= SAMPLE_START) & (daily_cme.index <= SAMPLE_END)]
+cw_der = daily_der[(daily_der.index >= SAMPLE_START) & (daily_der.index <= SAMPLE_END)]
+print(f"\nMedian per day (common window only):")
+print(f"  CME:     {cw_cme.median():>6.0f}")
+print(f"  Deribit: {cw_der.median():>6.0f}")
 ```
 
 
@@ -64,26 +79,24 @@ print(f"  Deribit: {daily_der.median():>6.0f}")
     
 
 
-    Median per day:
+    Median per day (full data):
       CME:         82
       Deribit:    100
     
+    Median per day (common window only):
+      CME:         82
+      Deribit:    102
+    
 
-#### 2. ATM Implied Volatility Time Series (Thesis Figure 1)
+#### 2. ATM Implied Volatility Time Series
 
 
 ```python
 def atm_iv_series(df, venue_label):
-    """
-    Extract daily ATM IV: for each (date, expiration), pick the strike
-    closest to the forward, then average across expirations.
-    """
     df = df.copy()
     df['abs_kappa'] = df['log_moneyness'].abs()
-    # Closest-to-ATM option per (date, expiration)
     idx = df.groupby(['date', 'expiration'])['abs_kappa'].idxmin()
     atm = df.loc[idx]
-    # Average across expirations per day
     return atm.groupby('date')['impliedvolatility'].mean()
 
 atm_cme = atm_iv_series(cme, 'CME')
@@ -92,13 +105,19 @@ atm_der = atm_iv_series(der, 'Deribit')
 fig, ax = plt.subplots(figsize=(13, 5))
 (atm_der * 100).plot(ax=ax, label='Deribit', alpha=0.85)
 (atm_cme * 100).plot(ax=ax, label='CME', alpha=0.85)
-ax.axvline(pd.Timestamp('2024-01-10'), color='red', linestyle='--',
-           label='Spot ETF approval')
-ax.axvline(pd.Timestamp('2022-11-08'), color='gray', linestyle=':',
-           label='FTX collapse')
+
+ax.axvspan(SAMPLE_START, SAMPLE_END, alpha=0.08, color='blue', label='Common sample window')
+ax.axvline(SAMPLE_START, color='navy', linestyle=':', linewidth=0.8, alpha=0.6)
+ax.axvline(SAMPLE_END, color='navy', linestyle=':', linewidth=0.8, alpha=0.6)
+
+ax.axvline(pd.Timestamp('2020-03-12'), color='#1C3D5A', linestyle='--', alpha=0.5, label='COVID crash')
+ax.axvline(pd.Timestamp('2022-05-09'), color='#A61C1C', linestyle='--', alpha=0.5, label='LUNA collapse')
+ax.axvline(pd.Timestamp('2022-11-08'), color='#D97706', linestyle='--', alpha=0.5, label='FTX collapse')
+
 ax.set_ylabel('ATM Implied Volatility (%)')
+ax.set_xlabel('Date')
 ax.set_title('Daily ATM IV across venues')
-ax.legend()
+ax.legend(loc='upper right', fontsize=8)
 plt.tight_layout()
 plt.savefig(FIG_DIR / 'fig_atm_iv_timeseries.png', dpi=150)
 plt.show()
@@ -318,6 +337,10 @@ else:
 
 
 ```python
+der_cw = der[(der['date'] >= SAMPLE_START) & (der['date'] <= SAMPLE_END)]
+daily_der_cw = der_cw.groupby('date').size()
+slices_der_cw = der_cw.groupby(['date', 'expiration']).size().reset_index(name='n')
+
 summary = pd.DataFrame({
     'CME': [
         len(cme),
@@ -330,30 +353,35 @@ summary = pd.DataFrame({
         (cme['callput']=='P').sum(),
     ],
     'Deribit': [
-        len(der),
-        der['date'].nunique(),
-        der['date'].min().date(),
-        der['date'].max().date(),
-        round(daily_der.median()),
-        round(slices_der['n'].median()),
-        (der['callput']=='C').sum(),
-        (der['callput']=='P').sum(),
+        len(der_cw),
+        der_cw['date'].nunique(),
+        der_cw['date'].min().date(),
+        der_cw['date'].max().date(),
+        round(daily_der_cw.median()),
+        round(slices_der_cw['n'].median()),
+        (der_cw['callput']=='C').sum(),
+        (der_cw['callput']=='P').sum(),
     ],
 }, index=['Cleaned rows', 'Trading days', 'Sample start', 'Sample end',
          'Median options/day', 'Median options/slice', 'Calls', 'Puts'])
+
 print(summary)
 summary.to_csv(PROJECT_ROOT / 'results' / 'data' / 'tables' / 'data_summary.csv')
+print(f"\nNote: Deribit rows scoped to common window "
+      f"({SAMPLE_START.date()} – {SAMPLE_END.date()})")
 ```
 
                                  CME     Deribit
-    Cleaned rows               65598      327202
-    Trading days                 802        3105
-    Sample start          2020-01-13  2017-07-01
-    Sample end            2023-08-31  2025-12-30
-    Median options/day            82         100
-    Median options/slice          21          22
-    Calls                      34414      180908
-    Puts                       31184      146294
+    Cleaned rows               65598      135276
+    Trading days                 802        1327
+    Sample start          2020-01-13  2020-01-13
+    Sample end            2023-08-31  2023-08-31
+    Median options/day            82         102
+    Median options/slice          21          20
+    Calls                      34414       75024
+    Puts                       31184       60252
+    
+    Note: Deribit rows scoped to common window (2020-01-13 – 2023-08-31)
     
 
 #### 8. Grid parameters optimization
