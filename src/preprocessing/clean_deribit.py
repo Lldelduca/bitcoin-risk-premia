@@ -62,6 +62,91 @@ def compute_deribit_forward(df: pd.DataFrame) -> pd.DataFrame:
     df['risk_free_rate'] = 0.0
     return df
 
+def compute_deribit_forward_pcp(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Computes the synthetic forward price via put-call parity for
+    Deribit, with fallback to the spot index price.
+ 
+    F = K_ATM + (C_ATM - P_ATM)
+ 
+    Since Deribit is BTC-margined with r = 0, the discount factor
+    e^(r*tau) = 1 and the PCP formula simplifies. For (date, exp)
+    groups where no matched call-put pair exists at the ATM strike,
+    falls back to F = spot_price (the current convention).
+ 
+    The Deribit basis (F_PCP - S) / S is stored as a column for
+    downstream friction-proxy analysis.
+    """
+    df = df.copy()
+ 
+    # For each (date, expiration), find the strike closest to spot
+    df['moneyness_abs'] = (df['strike'] - df['spot_price']).abs()
+ 
+    # Get ATM strike per group
+    atm_idx = df.groupby(['date', 'expiration'])['moneyness_abs'].idxmin()
+    atm_strikes = df.loc[atm_idx, ['date', 'expiration', 'strike']].rename(
+        columns={'strike': 'atm_strike'}
+    )
+ 
+    df = df.merge(atm_strikes, on=['date', 'expiration'], how='left')
+ 
+    # Get matched ATM call and put prices (using mark prices)
+    atm_options = df[df['strike'] == df['atm_strike']].copy()
+ 
+    calls = atm_options[atm_options['callput'] == 'C'][
+        ['date', 'expiration', 'strike', 'settlementprice']
+    ].rename(columns={'settlementprice': 'call_price'})
+ 
+    puts = atm_options[atm_options['callput'] == 'P'][
+        ['date', 'expiration', 'strike', 'settlementprice']
+    ].rename(columns={'settlementprice': 'put_price'})
+ 
+    pcp = calls.merge(puts, on=['date', 'expiration', 'strike'], how='inner')
+ 
+    # F = K + (C - P)  since r = 0 for Deribit
+    pcp['forward_pcp'] = pcp['strike'] + (pcp['call_price'] - pcp['put_price'])
+ 
+    # Merge back to main dataframe
+    forward_map = pcp[['date', 'expiration', 'forward_pcp']]
+    df = df.merge(forward_map, on=['date', 'expiration'], how='left')
+ 
+    # Use PCP forward where available, fallback to spot
+    n_pcp = df['forward_pcp'].notna().sum()
+    n_total = len(df)
+    n_slices_pcp = pcp[['date', 'expiration']].drop_duplicates().shape[0]
+    n_slices_total = df[['date', 'expiration']].drop_duplicates().shape[0]
+ 
+    df['forward_price'] = df['forward_pcp'].fillna(df['spot_price'])
+ 
+    # Compute the Deribit basis: (F_PCP - S) / S
+    df['deribit_basis'] = (df['forward_price'] - df['spot_price']) / df['spot_price']
+ 
+    # Recompute log-moneyness with the improved forward
+    df['log_moneyness'] = np.log(df['strike'] / df['forward_price'])
+ 
+    # Risk-free rate remains zero
+    df['risk_free_rate'] = 0.0
+ 
+    # Clean up temporary columns
+    df.drop(columns=['moneyness_abs', 'atm_strike', 'forward_pcp'],
+            inplace=True, errors='ignore')
+ 
+    print(f"\n  PCP forward computed:")
+    print(f"    Slices with matched call-put pair: "
+          f"{n_slices_pcp:,} / {n_slices_total:,} "
+          f"({100 * n_slices_pcp / n_slices_total:.1f}%)")
+    print(f"    Rows with PCP forward: "
+          f"{n_pcp:,} / {n_total:,} "
+          f"({100 * n_pcp / n_total:.1f}%)")
+    print(f"    Deribit basis (F_PCP - S) / S:")
+    basis = df.groupby('date')['deribit_basis'].mean()
+    print(f"      Median: {basis.median():.4%}")
+    print(f"      Mean:   {basis.mean():.4%}")
+    print(f"      Std:    {basis.std():.4%}")
+    print(f"      Range:  [{basis.min():.4%}, {basis.max():.4%}]")
+ 
+    return df
+
 def process_deribit_data():
     print("\n" + "=" * 60)
     print("  Deribit Bitcoin Options Cleaning Pipeline")
@@ -107,7 +192,9 @@ def process_deribit_data():
         print(f"  {'Drop slices with <%d trades' % min_trades:<40} {len(df):>12,} {n_before - len(df):>12,}")
 
     # Step 4: Compute forward and moneyness
-    df = compute_deribit_forward(df)
+
+    # df = compute_deribit_forward(df) --> OLD ONE
+    df = compute_deribit_forward_pcp(df)
 
     # Step 5: Consistency filters (matching CME pipeline)
     df = df.rename(columns={'iv': 'impliedvolatility'})
@@ -181,6 +268,19 @@ def process_deribit_data():
     print(f"    Slices with < 4 options: "
           f"{(per_slice['n_options'] < 4).sum():,} "
           f"({(per_slice['n_options'] < 4).mean():.1%})")
+    
+    daily_basis = df.groupby('date').agg(
+        deribit_basis_mean=('deribit_basis', 'mean'),
+        deribit_basis_median=('deribit_basis', 'median'),
+        spot_price=('spot_price', 'last'),
+        forward_price_mean=('forward_price', 'mean'),
+        n_slices=('expiration', 'nunique'),
+    ).reset_index()
+    basis_path = out_path.parent / "deribit_daily_basis.parquet"
+    daily_basis.to_parquet(basis_path, index=False)
+    print(f"\n  Deribit daily basis saved to: {basis_path}")
+    print(f"  ({len(daily_basis):,} days, "
+          f"median basis: {daily_basis['deribit_basis_mean'].median():.4%})")
 
     return df
 
