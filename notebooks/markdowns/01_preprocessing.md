@@ -29,7 +29,7 @@ if funding is not None:
 ```
 
     CME:           65,598 rows, 802 days
-    Deribit:      327,202 rows, 3105 days
+    Deribit:      326,702 rows, 3105 days
     Auxiliary:      2,191 rows, 2191 days
     Funding:          964 rows, 964 days
     
@@ -163,13 +163,13 @@ slices_der = slice_diagnostics(der, 'Deribit')
     
     === Deribit slice density ===
     count    13490.000000
-    mean        24.255152
-    std         11.012241
+    mean        24.218087
+    std         10.975986
     min          1.000000
     25%         16.000000
     50%         22.000000
     75%         30.000000
-    max         70.000000
+    max         69.000000
     Name: n, dtype: float64
     Slices with < 4 options: 44 (0.3%)
     Slices with < 3 options: 26 (0.2%)
@@ -325,8 +325,8 @@ else:
            funding_hl_annual  funding_der_annual  delta_f_hl_der
     count         964.000000          964.000000      964.000000
     mean            0.147445            0.083242        0.064203
-    std             0.348048            0.114546        0.319185
-    min            -6.354915           -0.278013       -6.353183
+    std             0.348048            0.114546        0.319186
+    min            -6.354915           -0.278013       -6.353225
     25%             0.084278            0.006842        0.008307
     50%             0.109500            0.044849        0.070942
     75%             0.208380            0.124771        0.126461
@@ -372,14 +372,14 @@ print(f"\nNote: Deribit rows scoped to common window "
 ```
 
                                  CME     Deribit
-    Cleaned rows               65598      135276
+    Cleaned rows               65598      135081
     Trading days                 802        1327
     Sample start          2020-01-13  2020-01-13
     Sample end            2023-08-31  2023-08-31
     Median options/day            82         102
     Median options/slice          21          20
-    Calls                      34414       75024
-    Puts                       31184       60252
+    Calls                      34414       74066
+    Puts                       31184       61015
     
     Note: Deribit rows scoped to common window (2020-01-13 – 2023-08-31)
     
@@ -507,9 +507,9 @@ for venue, fname in [('CME', 'cme_options_clean.parquet'), ('Deribit', 'deribit_
     ============================================================
     
       Days to expiry:
-      count    135276.000000
-    mean         56.815858
-    std          46.589947
+      count    135081.000000
+    mean         56.839467
+    std          46.587060
     min          10.000000
     25%          18.000000
     50%          42.000000
@@ -518,43 +518,43 @@ for venue, fname in [('CME', 'cme_options_clean.parquet'), ('Deribit', 'deribit_
     
       Most common DTEs (top 15):
       days_to_expiry
-    14    4442
-    11    4308
-    10    4289
-    15    4159
-    13    4156
-    12    4070
-    21    3702
-    16    3688
-    17    3636
-    18    3630
-    19    3389
-    20    3387
-    22    3358
-    35     957
-    31     950
+    14    4425
+    11    4302
+    10    4277
+    13    4148
+    15    4142
+    12    4066
+    21    3693
+    16    3679
+    18    3629
+    17    3619
+    19    3384
+    20    3379
+    22    3339
+    35     952
+    31     949
     
       Log-moneyness (κ):
-      count    135276.000000
-    mean          0.053830
-    std           0.442408
-    min          -2.023430
-    25%          -0.193888
-    50%           0.046415
-    75%           0.291989
+      count    135081.000000
+    mean          0.046841
+    std           0.443226
+    min          -2.069211
+    25%          -0.201196
+    50%           0.040998
+    75%           0.286727
     max           2.068223
-        p1: -1.1003
-        p5: -0.6696
-        p25: -0.1939
-        p50: 0.0464
-        p75: 0.2920
-        p95: 0.8108
-        p99: 1.2463
+        p1: -1.1172
+        p5: -0.6805
+        p25: -0.2012
+        p50: 0.0410
+        p75: 0.2867
+        p95: 0.8011
+        p99: 1.2337
     
       τ (years):
-      count    135276.000000
-    mean          0.155553
-    std           0.127556
+      count    135081.000000
+    mean          0.155618
+    std           0.127548
     min           0.027379
     25%           0.049281
     50%           0.114990
@@ -564,12 +564,12 @@ for venue, fname in [('CME', 'cme_options_clean.parquet'), ('Deribit', 'deribit_
       Expirations per day: median=5, min=2, max=6
     
       Implied Volatility:
-      count    135276.000000
-    mean          0.789986
-    std           0.233552
+      count    135081.000000
+    mean          0.789638
+    std           0.232997
     min           0.246100
-    25%           0.624000
-    50%           0.758287
-    75%           0.929310
+    25%           0.623971
+    50%           0.758200
+    75%           0.929110
     max           2.820061
     
