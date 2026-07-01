@@ -72,12 +72,12 @@ plt.show()
 
     === Rank Selection Diagnostics ===
      rank  reconstruction_error  explained      corcondia
-        1              0.453033   0.794761     100.000000
-        2              0.373788   0.860282     -66.828983
-        3              0.276546   0.923522 -152087.942507
-        4              0.233955   0.945265    -238.279424
-        5              0.196889   0.961235    -103.344486
-        6              0.173398   0.969933 -180481.943609
+        1              0.456992   0.791158     100.000000
+        2              0.379516   0.855968     -56.242200
+        3              0.277777   0.922840 -151410.750191
+        4              0.235636   0.944475    -174.786970
+        5              0.199047   0.960380    -117.837889
+        6              0.177054   0.968652 -201421.685835
     
 
 
@@ -204,7 +204,7 @@ summary.to_csv(TAB_DIR / 'component_summary.csv', index=False)
 
     === Component Summary ===
     Component   Weight  CME loading  Deribit loading  Common
-            1 266.2687      -0.6663          -0.7457    True
+            1 265.6645      -0.6682           -0.744    True
     
 
 #### 7. Validation Against Auxiliary Conditioning Variables

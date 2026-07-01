@@ -32,7 +32,7 @@ print(f"Diagnostics: {len(diag):,} day-venue pairs")
 print(f"Venues: {diag['venue'].value_counts().to_dict()}")
 ```
 
-    Fitted parameters: 8,912 slices
+    Fitted parameters: 8,913 slices
     Diagnostics: 2,099 day-venue pairs
     Venues: {'DER': 1327, 'CME': 772}
     
@@ -57,12 +57,12 @@ rmse_table.to_csv(TAB_DIR / 'ssvi_rmse_summary.csv')
             count    mean     std     min      5%     25%     50%     75%     95%  \
     venue                                                                           
     CME     772.0  0.0168  0.0077  0.0007  0.0055  0.0112  0.0163  0.0220  0.0303   
-    DER    1327.0  0.0258  0.0086  0.0092  0.0155  0.0203  0.0243  0.0293  0.0418   
+    DER    1327.0  0.0260  0.0085  0.0091  0.0153  0.0203  0.0246  0.0296  0.0405   
     
               max  mean_pct  median_pct  
     venue                                
     CME    0.0593      1.68        1.63  
-    DER    0.0798      2.58        2.43  
+    DER    0.0770      2.60        2.46  
     
 
 
@@ -78,7 +78,7 @@ plt.savefig(FIG_DIR / 'fig_ssvi_rmse_boxplot.png', dpi=150)
 plt.show()
 ```
 
-    C:\Users\Lucal\AppData\Local\Temp\ipykernel_27148\1706358996.py:3: MatplotlibDeprecationWarning: The 'labels' parameter of boxplot() has been renamed 'tick_labels' since Matplotlib 3.9; support for the old name will be dropped in 3.11.
+    C:\Users\Lucal\AppData\Local\Temp\ipykernel_30208\1706358996.py:3: MatplotlibDeprecationWarning: The 'labels' parameter of boxplot() has been renamed 'tick_labels' since Matplotlib 3.9; support for the old name will be dropped in 3.11.
       bp = ax.boxplot(data_box, labels=['CME', 'Deribit'], showfliers=True,
     
 
@@ -138,11 +138,11 @@ for venue in ['CME', 'DER']:
     
     DER — 5 worst-fit days:
           date     rmse  n_slices  n_options
-    2020-03-12 0.079792         3         41
-    2021-05-21 0.075278         5        103
-    2021-01-14 0.067974         5        127
-    2020-03-14 0.067507         3         44
-    2023-08-12 0.066236         5        126
+    2020-03-12 0.076994         3         45
+    2021-01-14 0.073004         5        125
+    2021-01-07 0.070303         5        108
+    2023-08-12 0.067277         5        126
+    2020-08-17 0.066271         3         55
     
 
 #### 3. Fitted Parameter Evolution

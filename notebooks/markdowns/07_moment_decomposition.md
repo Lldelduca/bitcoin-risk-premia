@@ -141,20 +141,20 @@ for col in ["var_Q", "skew_Q", "kurt_Q"]:
     </tr>
     <tr>
       <th>DER</th>
-      <td>0.0552</td>
-      <td>0.0334</td>
-      <td>-1.0412</td>
-      <td>0.5085</td>
-      <td>9.2552</td>
-      <td>2.6300</td>
-      <td>0.0561</td>
-      <td>0.0347</td>
-      <td>0.0213</td>
-      <td>0.0255</td>
-      <td>0.0356</td>
-      <td>0.0461</td>
-      <td>0.0154</td>
-      <td>0.0307</td>
+      <td>0.0549</td>
+      <td>0.0332</td>
+      <td>-0.9959</td>
+      <td>0.5329</td>
+      <td>9.1733</td>
+      <td>2.6079</td>
+      <td>0.0558</td>
+      <td>0.0345</td>
+      <td>0.0205</td>
+      <td>0.0257</td>
+      <td>0.0348</td>
+      <td>0.0464</td>
+      <td>0.0151</td>
+      <td>0.0306</td>
     </tr>
   </tbody>
 </table>
@@ -163,9 +163,9 @@ for col in ["var_Q", "skew_Q", "kurt_Q"]:
 
     
     Matched CME-DER days: 624
-      Cross-venue correlation (var_Q): rho = 0.967
-      Cross-venue correlation (skew_Q): rho = 0.849
-      Cross-venue correlation (kurt_Q): rho = 0.795
+      Cross-venue correlation (var_Q): rho = 0.964
+      Cross-venue correlation (skew_Q): rho = 0.853
+      Cross-venue correlation (kurt_Q): rho = 0.791
     
 
 #### 2. Risk-Neutral Moment Time Series
@@ -266,14 +266,14 @@ for _, row in uncond.iterrows():
       <td>DER</td>
       <td>unconditional</td>
       <td>1317</td>
-      <td>0.0561</td>
-      <td>0.0213</td>
-      <td>0.0356</td>
-      <td>0.1129</td>
-      <td>0.4969</td>
-      <td>0.1882</td>
-      <td>0.3149</td>
-      <td>0.0154</td>
+      <td>0.0558</td>
+      <td>0.0205</td>
+      <td>0.0348</td>
+      <td>0.1111</td>
+      <td>0.5018</td>
+      <td>0.1847</td>
+      <td>0.3135</td>
+      <td>0.0151</td>
     </tr>
     <tr>
       <th>2</th>
@@ -298,10 +298,10 @@ for _, row in uncond.iterrows():
       <td>0.0144</td>
       <td>0.0210</td>
       <td>0.0809</td>
-      <td>0.5630</td>
+      <td>0.5628</td>
       <td>0.1778</td>
-      <td>0.2592</td>
-      <td>0.0070</td>
+      <td>0.2595</td>
+      <td>0.0069</td>
     </tr>
     <tr>
       <th>4</th>
@@ -311,53 +311,53 @@ for _, row in uncond.iterrows():
       <td>0.0824</td>
       <td>0.0341</td>
       <td>0.0615</td>
-      <td>0.1780</td>
-      <td>0.4629</td>
+      <td>0.1779</td>
+      <td>0.4630</td>
       <td>0.1915</td>
-      <td>0.3456</td>
-      <td>0.0320</td>
+      <td>0.3455</td>
+      <td>0.0321</td>
     </tr>
     <tr>
       <th>5</th>
       <td>DER</td>
       <td>low</td>
       <td>257</td>
-      <td>0.0273</td>
-      <td>0.0062</td>
-      <td>0.0086</td>
-      <td>0.0421</td>
-      <td>0.6479</td>
-      <td>0.1479</td>
-      <td>0.2042</td>
-      <td>-0.0014</td>
+      <td>0.0272</td>
+      <td>0.0061</td>
+      <td>0.0085</td>
+      <td>0.0419</td>
+      <td>0.6502</td>
+      <td>0.1458</td>
+      <td>0.2039</td>
+      <td>-0.0015</td>
     </tr>
     <tr>
       <th>6</th>
       <td>DER</td>
       <td>mid</td>
       <td>254</td>
-      <td>0.0485</td>
-      <td>0.0160</td>
-      <td>0.0234</td>
-      <td>0.0878</td>
-      <td>0.5519</td>
-      <td>0.1821</td>
-      <td>0.2659</td>
-      <td>0.0099</td>
+      <td>0.0482</td>
+      <td>0.0155</td>
+      <td>0.0229</td>
+      <td>0.0866</td>
+      <td>0.5566</td>
+      <td>0.1791</td>
+      <td>0.2643</td>
+      <td>0.0096</td>
     </tr>
     <tr>
       <th>7</th>
       <td>DER</td>
       <td>high</td>
       <td>254</td>
-      <td>0.0866</td>
-      <td>0.0371</td>
-      <td>0.0650</td>
-      <td>0.1887</td>
-      <td>0.4590</td>
-      <td>0.1964</td>
-      <td>0.3446</td>
-      <td>0.0367</td>
+      <td>0.0861</td>
+      <td>0.0359</td>
+      <td>0.0639</td>
+      <td>0.1859</td>
+      <td>0.4632</td>
+      <td>0.1930</td>
+      <td>0.3439</td>
+      <td>0.0363</td>
     </tr>
   </tbody>
 </table>
@@ -367,7 +367,7 @@ for _, row in uncond.iterrows():
     
     === Unconditional shares ===
       CME: var 51.8%, skew 18.1%, kurt 30.2% | total 27d = 0.0977 (ann. 132%)
-      DER: var 49.7%, skew 18.8%, kurt 31.5% | total 27d = 0.1129 (ann. 153%)
+      DER: var 50.2%, skew 18.5%, kurt 31.4% | total 27d = 0.1111 (ann. 150%)
     
 
 
@@ -439,12 +439,12 @@ for venue in ["CME", "DER"]:
       CME:
         low: var 66.9%, skew 13.8%, kurt 19.2% | total = 0.0384
         mid: var 56.3%, skew 17.8%, kurt 25.9% | total = 0.0809
-        high: var 46.3%, skew 19.2%, kurt 34.6% | total = 0.1780
+        high: var 46.3%, skew 19.2%, kurt 34.5% | total = 0.1779
     
       DER:
-        low: var 64.8%, skew 14.8%, kurt 20.4% | total = 0.0421
-        mid: var 55.2%, skew 18.2%, kurt 26.6% | total = 0.0878
-        high: var 45.9%, skew 19.6%, kurt 34.5% | total = 0.1887
+        low: var 65.0%, skew 14.6%, kurt 20.4% | total = 0.0419
+        mid: var 55.7%, skew 17.9%, kurt 26.4% | total = 0.0866
+        high: var 46.3%, skew 19.3%, kurt 34.4% | total = 0.1859
     
 
 #### 5. Cumulant Contribution Time Series and Boxplots
@@ -566,7 +566,7 @@ for venue in ["CME", "DER"]:
 
     === VRP Summary ===
       CME: mean = 0.0119, std = 0.0270, median = 0.0068, positive share = 71.0%
-      DER: mean = 0.0154, std = 0.0307, median = 0.0103, positive share = 73.8%
+      DER: mean = 0.0151, std = 0.0306, median = 0.0101, positive share = 73.8%
     
 
 #### 7. Preference Parameter Robustness ($\theta$ sweep)
@@ -645,11 +645,11 @@ plt.show()
       <td>1.0</td>
       <td>-0.6667</td>
       <td>0.5000</td>
-      <td>0.0543</td>
-      <td>0.0133</td>
-      <td>0.0164</td>
-      <td>0.0840</td>
-      <td>113.5990</td>
+      <td>0.0540</td>
+      <td>0.0129</td>
+      <td>0.0162</td>
+      <td>0.0831</td>
+      <td>112.3251</td>
     </tr>
     <tr>
       <th>2</th>
@@ -671,11 +671,11 @@ plt.show()
       <td>1.0</td>
       <td>-1.0000</td>
       <td>1.0000</td>
-      <td>0.0543</td>
-      <td>0.0200</td>
-      <td>0.0329</td>
-      <td>0.1071</td>
-      <td>144.8381</td>
+      <td>0.0540</td>
+      <td>0.0194</td>
+      <td>0.0324</td>
+      <td>0.1057</td>
+      <td>142.9301</td>
     </tr>
     <tr>
       <th>4</th>
@@ -697,11 +697,11 @@ plt.show()
       <td>1.0</td>
       <td>-1.3333</td>
       <td>1.6667</td>
-      <td>0.0543</td>
-      <td>0.0266</td>
-      <td>0.0548</td>
-      <td>0.1357</td>
-      <td>183.4882</td>
+      <td>0.0540</td>
+      <td>0.0258</td>
+      <td>0.0539</td>
+      <td>0.1338</td>
+      <td>180.8249</td>
     </tr>
   </tbody>
 </table>

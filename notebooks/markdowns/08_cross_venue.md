@@ -75,28 +75,28 @@ for dv in ["Pi_2", "Pi_3", "Pi_4"]:
     <tr>
       <th>0</th>
       <td>Pi_2</td>
-      <td>0.003838</td>
-      <td>0.000420</td>
-      <td>9.146261</td>
-      <td>5.893821e-20</td>
+      <td>0.003567</td>
+      <td>0.000417</td>
+      <td>8.563973</td>
+      <td>1.090429e-17</td>
       <td>***</td>
     </tr>
     <tr>
       <th>1</th>
       <td>Pi_3</td>
-      <td>0.002550</td>
-      <td>0.000532</td>
-      <td>4.796232</td>
-      <td>1.616784e-06</td>
+      <td>0.001957</td>
+      <td>0.000573</td>
+      <td>3.417222</td>
+      <td>6.326374e-04</td>
       <td>***</td>
     </tr>
     <tr>
       <th>2</th>
       <td>Pi_4</td>
-      <td>0.003789</td>
-      <td>0.000922</td>
-      <td>4.111510</td>
-      <td>3.930797e-05</td>
+      <td>0.003260</td>
+      <td>0.001039</td>
+      <td>3.139037</td>
+      <td>1.695042e-03</td>
       <td>***</td>
     </tr>
   </tbody>
@@ -174,57 +174,57 @@ plt.tight_layout(); plt.show()
       <th>0</th>
       <td>unconditional</td>
       <td>619</td>
-      <td>-0.0327</td>
-      <td>-0.0440</td>
-      <td>-0.0225</td>
-      <td>0.0066</td>
-      <td>0.0041</td>
-      <td>0.0091</td>
-      <td>-0.0795</td>
-      <td>-0.1161</td>
-      <td>-0.0530</td>
+      <td>-0.0307</td>
+      <td>-0.0416</td>
+      <td>-0.0209</td>
+      <td>0.0069</td>
+      <td>0.0045</td>
+      <td>0.0093</td>
+      <td>-0.0826</td>
+      <td>-0.1180</td>
+      <td>-0.0565</td>
     </tr>
     <tr>
       <th>1</th>
       <td>low</td>
       <td>223</td>
-      <td>-0.0334</td>
-      <td>-0.0585</td>
-      <td>-0.0146</td>
+      <td>-0.0296</td>
+      <td>-0.0553</td>
+      <td>-0.0104</td>
       <td>0.0023</td>
-      <td>-0.0005</td>
-      <td>0.0048</td>
-      <td>-0.0990</td>
-      <td>-0.2029</td>
-      <td>-0.0264</td>
+      <td>-0.0004</td>
+      <td>0.0049</td>
+      <td>-0.1037</td>
+      <td>-0.2052</td>
+      <td>-0.0352</td>
     </tr>
     <tr>
       <th>2</th>
       <td>mid</td>
       <td>191</td>
-      <td>-0.0338</td>
-      <td>-0.0494</td>
-      <td>-0.0209</td>
-      <td>0.0060</td>
-      <td>0.0043</td>
-      <td>0.0080</td>
-      <td>-0.0701</td>
-      <td>-0.0918</td>
-      <td>-0.0477</td>
+      <td>-0.0318</td>
+      <td>-0.0458</td>
+      <td>-0.0198</td>
+      <td>0.0062</td>
+      <td>0.0045</td>
+      <td>0.0082</td>
+      <td>-0.0733</td>
+      <td>-0.0969</td>
+      <td>-0.0500</td>
     </tr>
     <tr>
       <th>3</th>
       <td>high</td>
       <td>205</td>
-      <td>-0.0308</td>
-      <td>-0.0384</td>
-      <td>-0.0216</td>
-      <td>0.0120</td>
-      <td>0.0090</td>
-      <td>0.0143</td>
-      <td>-0.0669</td>
-      <td>-0.0818</td>
-      <td>-0.0458</td>
+      <td>-0.0309</td>
+      <td>-0.0376</td>
+      <td>-0.0230</td>
+      <td>0.0124</td>
+      <td>0.0099</td>
+      <td>0.0145</td>
+      <td>-0.0682</td>
+      <td>-0.0826</td>
+      <td>-0.0481</td>
     </tr>
   </tbody>
 </table>
@@ -296,10 +296,10 @@ else:
       <td>-0.00367</td>
       <td>-0.00512</td>
       <td>-0.00230</td>
-      <td>0.00305</td>
-      <td>0.00213</td>
-      <td>0.00404</td>
-      <td>0.00672</td>
+      <td>0.00292</td>
+      <td>0.00204</td>
+      <td>0.00384</td>
+      <td>0.00659</td>
     </tr>
     <tr>
       <th>1</th>
@@ -307,10 +307,10 @@ else:
       <td>-0.01599</td>
       <td>-0.02068</td>
       <td>-0.01200</td>
-      <td>0.00123</td>
-      <td>0.00077</td>
-      <td>0.00172</td>
-      <td>0.01722</td>
+      <td>0.00091</td>
+      <td>0.00053</td>
+      <td>0.00131</td>
+      <td>0.01690</td>
     </tr>
     <tr>
       <th>2</th>
@@ -318,10 +318,10 @@ else:
       <td>-0.00374</td>
       <td>-0.00529</td>
       <td>-0.00222</td>
-      <td>0.00159</td>
-      <td>0.00092</td>
-      <td>0.00226</td>
-      <td>0.00533</td>
+      <td>0.00139</td>
+      <td>0.00075</td>
+      <td>0.00203</td>
+      <td>0.00513</td>
     </tr>
   </tbody>
 </table>
@@ -388,22 +388,22 @@ print("\nThe kernel significantly depends on the volatility regime; the low-vol 
     <tr>
       <th>0</th>
       <td>CME</td>
-      <td>33.6876</td>
+      <td>32.9016</td>
       <td>0.005</td>
-      <td>15.9437</td>
-      <td>-7.7201</td>
-      <td>0.0701</td>
-      <td>0.470</td>
+      <td>15.8425</td>
+      <td>-7.6535</td>
+      <td>0.0587</td>
+      <td>0.460</td>
     </tr>
     <tr>
       <th>1</th>
       <td>DER</td>
-      <td>20.1313</td>
+      <td>20.3802</td>
       <td>0.010</td>
-      <td>16.6492</td>
-      <td>-8.7116</td>
-      <td>0.4650</td>
-      <td>0.595</td>
+      <td>17.1939</td>
+      <td>-9.3011</td>
+      <td>0.6724</td>
+      <td>0.655</td>
     </tr>
   </tbody>
 </table>
@@ -411,8 +411,8 @@ print("\nThe kernel significantly depends on the volatility regime; the low-vol 
 
 
     Curvature at money (2c+6d at R=1), low - high:
-      CME: -15.02 [-24.17, -10.50]  P(<0) = 1.000
-      DER: -14.63 [-22.71, -9.76]  P(<0) = 1.000
+      CME: -14.95 [-24.27, -10.41]  P(<0) = 1.000
+      DER: -14.57 [-22.78, -9.65]  P(<0) = 1.000
     
     The kernel significantly depends on the volatility regime; the low-vol kernel is significantly more concave at the money (P<0 = 1.000 both venues).
     

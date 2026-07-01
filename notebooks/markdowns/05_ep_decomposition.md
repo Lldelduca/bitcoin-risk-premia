@@ -30,9 +30,9 @@ print(summary.to_string(index=False))
     --- EP Decomposition Summary ---
     venue estimator  total_ep  downside_contrib  downside_share  mid_contrib  mid_share  upside_contrib  upside_share
       CME   almeida  0.142070         -0.021587       -0.151945    -0.257299  -1.811068        0.422963      2.977143
-      DER   almeida  0.141743         -0.027825       -0.196308    -0.238499  -1.682613        0.410063      2.892993
+      DER   almeida  0.142069         -0.028876       -0.203254    -0.237917  -1.674655        0.410856      2.891944
       CME       kde  0.040734          0.002745        0.067383    -0.112836  -2.770046        0.151056      3.708324
-      DER       kde  0.040408         -0.003494       -0.086461    -0.094037  -2.327202        0.138156      3.419054
+      DER       kde  0.040733         -0.004544       -0.111564    -0.093454  -2.294291        0.138949      3.411187
     
 
 #### 1. Physical vs Risk-Neutral Densities
@@ -167,7 +167,7 @@ print(summary_pivot.round(3).to_string())
     estimator  almeida    kde        almeida    kde   almeida    kde      almeida    kde
     venue                                                                               
     CME          0.142  0.041         -0.152  0.067    -1.811 -2.770        2.977  3.708
-    DER          0.142  0.040         -0.196 -0.086    -1.683 -2.327        2.893  3.419
+    DER          0.142  0.041         -0.203 -0.112    -1.675 -2.294        2.892  3.411
     
 
 #### 6. Estimator Robustness: Almeida vs KDE

@@ -185,7 +185,7 @@ print(z.groupby('tercile')['Z_IVS_1'].agg(['min', 'max', 'count']))
     Tercile breakpoints (Z_IVS_1):
                   min       max  count
     tercile                           
-    low     -1.451079 -0.512684    258
-    mid     -0.512043  0.228332    257
-    high     0.229178  7.570144    257
+    low     -1.448989 -0.509152    258
+    mid     -0.506748  0.224941    257
+    high     0.228534  7.610302    257
     
