@@ -1,159 +1,228 @@
 """
 Two estimators for the unconditional physical density p(R) of 27-day Bitcoin gross spot returns:
 
-  1. Almeida et al. (2026)
-     Full-sample 27-day returns -> histogram body -> 10th-order polynomial smoothing -> GEV tails
+  1. Almeida et al. (2026) / Figlewski (2008)
+     Full-sample 27-day returns -> histogram body -> 10th-order polynomial smoothing -> GEV tails (Point matching)
 
-  2. Gaussian KDE with Scott's rule 
-     Full-sample 27-day returns -> Gaussian KDE with plug-inbandwidth -> GPD tails
+  2. Gaussian KDE with Scott's rule
+     Full-sample 27-day returns -> Gaussian KDE -> GPD tails via a peaks-over-threshold splice.
 
 """
 
+import warnings
 import numpy as np
 from scipy import stats
+from scipy.optimize import least_squares
 from typing import NamedTuple
 
-class PhysicalDensity(NamedTuple):
-    R_grid: np.ndarray       # gross return grid
-    p_R: np.ndarray          # density values on grid
-    method: str              # "almeida" or "kde"
-    n_returns: int           # number of overlapping returns used
-    bandwidth: float | None  # KDE bandwidth (None for Almeida)
 
-# Shared utilities
+class PhysicalDensity(NamedTuple):
+    R_grid: np.ndarray               # gross return grid
+    p_R: np.ndarray                  # density values on grid
+    method: str                      # "almeida" or "kde"
+    n_returns: int                   # number of overlapping returns used
+    bandwidth: float | None          # KDE bandwidth (None for Almeida)
+    diagnostics: dict | None = None  # tail-fit diagnostics
+
+# Shared Functions
 def compute_overlapping_returns(spot: np.ndarray, horizon: int = 27) -> np.ndarray:
     R = spot[horizon:] / spot[:-horizon]
     return R[np.isfinite(R) & (R > 0)]
 
-def _fit_gev_tail(excesses: np.ndarray):
-    c, loc, scale = stats.genextreme.fit(excesses)
-    return c, loc, scale
+def _empirical_pdf_at(x: float, R_data: np.ndarray, n_bins: int) -> float:
+    counts, edges = np.histogram(R_data, bins=n_bins, density=True)
+    idx = int(np.clip(np.searchsorted(edges, x, side="right") - 1, 0, n_bins - 1))
+    val = float(counts[idx])
+    if val <= 0.0:
+        val = float(stats.gaussian_kde(R_data)(x)[0])
+    return val
 
 def _fit_gpd_tail(excesses: np.ndarray):
     shape, _, scale = stats.genpareto.fit(excesses, floc=0)
     return shape, scale
 
-def _splice_and_normalize(R_grid, p_body, R_data, lower_pct=10, upper_pct=90, tail_type="gev"):
-    u_L = np.percentile(R_data, lower_pct)
-    u_R = np.percentile(R_data, upper_pct)
+# GEV point-matching fit (Figlewski 2008)
+def _fit_gev_point_matching(x1: float, F1_target: float, f1_target: float, x2: float, f2_target: float, 
+    init_loc: float, init_scale: float, w_cdf: float = 10.0):
 
-    left_data = R_data[R_data < u_L]
-    right_data = R_data[R_data > u_R]
+    mono_grid = x1 + np.linspace(0.0, 6.0, 60) * max(x2 - x1, 1e-3)
 
-    p_out = p_body.copy()
+    def residuals(params):
+        c, loc, log_scale = params
+        scale = np.exp(log_scale)
+        with np.errstate(all="ignore"):
+            rF = stats.genextreme.cdf(x1, c, loc=loc, scale=scale) - F1_target
+            rf1 = stats.genextreme.pdf(x1, c, loc=loc, scale=scale) - f1_target
+            rf2 = stats.genextreme.pdf(x2, c, loc=loc, scale=scale) - f2_target
+            pdf_tail = stats.genextreme.pdf(mono_grid, c, loc=loc, scale=scale)
+            r_mono = 10.0 * float(np.sum(np.clip(np.diff(pdf_tail), 0.0, None)))
+        out = np.array([w_cdf * rF, rf1, rf2, r_mono])
+        return np.where(np.isfinite(out), out, 1e3)
 
-    if tail_type == "gev":
-        # Left tail: GEV on (u_L - R) for R < u_L
-        if len(left_data) > 10:
-            c_L, loc_L, scale_L = _fit_gev_tail(u_L - left_data)
-            left_mask = R_grid < u_L
-            excesses_L = u_L - R_grid[left_mask]
-            p_left = stats.genextreme.pdf(excesses_L, c_L, loc=loc_L, scale=scale_L)
-            # Scale to match body at splice point
-            idx_splice_L = np.searchsorted(R_grid, u_L)
-            if idx_splice_L < len(p_body) and p_body[idx_splice_L] > 0 and len(p_left) > 0 and p_left[-1] > 0:
-                p_left *= p_body[idx_splice_L] / p_left[-1]
-            p_out[left_mask] = p_left
+    best = None
+    for c0 in (-0.3, -0.1, 0.0, 0.1, 0.3):
+        try:
+            sol = least_squares(
+                residuals,
+                x0=np.array([c0, init_loc, np.log(init_scale)]),
+                bounds=([-0.95, -np.inf, np.log(1e-6)],
+                        [0.95, np.inf, np.log(1e3)]),
+                method="trf", xtol=1e-14, ftol=1e-14, max_nfev=5000,
+            )
+        except Exception:
+            continue
+        if best is None or sol.cost < best.cost:
+            best = sol
+    if best is None:
+        raise RuntimeError("GEV point-matching fit failed for all starts.")
 
-        # Right tail: GEV on (R - u_R) for R > u_R
-        if len(right_data) > 10:
-            c_R, loc_R, scale_R = _fit_gev_tail(right_data - u_R)
-            right_mask = R_grid > u_R
-            excesses_R = R_grid[right_mask] - u_R
-            p_right = stats.genextreme.pdf(excesses_R, c_R, loc=loc_R, scale=scale_R)
-            idx_splice_R = np.searchsorted(R_grid, u_R) - 1
-            if idx_splice_R >= 0 and p_body[idx_splice_R] > 0 and len(p_right) > 0 and p_right[0] > 0:
-                p_right *= p_body[idx_splice_R] / p_right[0]
-            p_out[right_mask] = p_right
+    c, loc, log_scale = best.x
+    info = {
+        "cost": float(best.cost),
+        "residuals": best.fun.tolist(),
+        "xi_figlewski": float(-c),
+        "success": bool(best.success),
+    }
+    return float(c), float(loc), float(np.exp(log_scale)), info
 
-    elif tail_type == "gpd":
-        # Left tail: GPD on (u_L - R) for R < u_L
-        if len(left_data) > 10:
-            shape_L, scale_L = _fit_gpd_tail(u_L - left_data)
-            left_mask = R_grid < u_L
-            excesses_L = u_L - R_grid[left_mask]
-            p_left = stats.genpareto.pdf(excesses_L, shape_L, loc=0, scale=scale_L)
-            idx_splice_L = np.searchsorted(R_grid, u_L)
-            if idx_splice_L < len(p_body) and p_body[idx_splice_L] > 0 and len(p_left) > 0 and p_left[-1] > 0:
-                p_left *= p_body[idx_splice_L] / p_left[-1]
-            p_out[left_mask] = p_left
-
-        # Right tail: GPD on (R - u_R) for R > u_R
-        if len(right_data) > 10:
-            shape_R, scale_R = _fit_gpd_tail(right_data - u_R)
-            right_mask = R_grid > u_R
-            excesses_R = R_grid[right_mask] - u_R
-            p_right = stats.genpareto.pdf(excesses_R, shape_R, loc=0, scale=scale_R)
-            idx_splice_R = np.searchsorted(R_grid, u_R) - 1
-            if idx_splice_R >= 0 and p_body[idx_splice_R] > 0 and len(p_right) > 0 and p_right[0] > 0:
-                p_right *= p_body[idx_splice_R] / p_right[0]
-            p_out[right_mask] = p_right
-
-    # Floor at zero and renormalize
-    p_out = np.maximum(p_out, 0)
-    mass = np.trapezoid(p_out, R_grid)
-    if mass > 0:
-        p_out /= mass
-
-    return p_out
-
-# Estimator 1: Almeida et al. (2026)
-def estimate_physical_density_almeida(
-    spot: np.ndarray, R_grid: np.ndarray, horizon: int = 27, n_bins: int = 12, poly_order: int = 10, lower_pct: int = 10, 
-    upper_pct: int = 90) -> PhysicalDensity:
+# Estimator 1: Almeida et al. (2026) body + Figlewski GEV tails
+def estimate_physical_density_almeida(spot: np.ndarray, R_grid: np.ndarray, horizon: int = 27, n_bins: int = 12,
+    poly_order: int = 10, lower_pct: int = 10, upper_pct: int = 90) -> PhysicalDensity:
+    
     R_data = compute_overlapping_returns(spot, horizon)
-    return estimate_physical_density_almeida_from_returns(
-        R_data, R_grid, n_bins=n_bins, poly_order=poly_order,
+    return estimate_physical_density_almeida_from_returns(R_data, R_grid, n_bins=n_bins, poly_order=poly_order,
         lower_pct=lower_pct, upper_pct=upper_pct)
 
-def estimate_physical_density_almeida_from_returns(
-    R_data: np.ndarray, R_grid: np.ndarray, n_bins: int = 12, poly_order: int = 10, lower_pct: int = 10,
-    upper_pct: int = 90) -> PhysicalDensity:
+def estimate_physical_density_almeida_from_returns(R_data: np.ndarray, R_grid: np.ndarray, n_bins: int = 12,
+    poly_order: int = 10, lower_pct: int = 10, upper_pct: int = 90,anchor_offset_pct: float = 5.0) -> PhysicalDensity:
+
+    R_grid = np.asarray(R_grid, dtype=float)
 
     # Step 1: histogram density estimate
     counts, bin_edges = np.histogram(R_data, bins=n_bins, density=True)
     bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
 
     # Step 2: polynomial smoothing on body region
-    u_L = np.percentile(R_data, lower_pct)
-    u_R = np.percentile(R_data, upper_pct)
+    u_L = float(np.percentile(R_data, lower_pct))
+    u_R = float(np.percentile(R_data, upper_pct))
     body_mask = (bin_centers >= u_L) & (bin_centers <= u_R)
 
     if body_mask.sum() > poly_order:
         coeffs = np.polyfit(bin_centers[body_mask], counts[body_mask], poly_order)
-        poly_fn = np.poly1d(coeffs)
     else:
-        coeffs = np.polyfit(bin_centers, counts, min(poly_order, len(bin_centers) - 1))
-        poly_fn = np.poly1d(coeffs)
+        coeffs = np.polyfit(bin_centers, counts,
+                            min(poly_order, len(bin_centers) - 1))
+    poly_fn = np.poly1d(coeffs)
 
-    # Evaluate polynomial body on the full return grid within [u_L, u_R]
-    p_body = np.zeros_like(R_grid, dtype=float)
+    p_R = np.zeros_like(R_grid, dtype=float)
     body_grid_mask = (R_grid >= u_L) & (R_grid <= u_R)
-    p_body[body_grid_mask] = poly_fn(R_grid[body_grid_mask])
-    p_body = np.maximum(p_body, 0)
+    p_R[body_grid_mask] = np.maximum(poly_fn(R_grid[body_grid_mask]), 0.0)
 
-    # Step 3: splice GEV tails and renormalize
-    p_R = _splice_and_normalize(R_grid, p_body, R_data, lower_pct, upper_pct, tail_type="gev")
+    diagnostics = {"u_L": u_L, "u_R": u_R}
 
-    return PhysicalDensity(R_grid=R_grid, p_R=p_R, method="almeida", n_returns=len(R_data), bandwidth=None)
+    # Step 3a: right tail -- GEV point-matched at (q90, q95)
+    x2_R = float(np.percentile(R_data, upper_pct + anchor_offset_pct))
+    f1_R = max(_empirical_pdf_at(u_R, R_data, n_bins), float(poly_fn(u_R)), 1e-10)
+    f2_R = max(_empirical_pdf_at(x2_R, R_data, n_bins), 1e-10)
+    c_R, loc_R, scale_R, info_R = _fit_gev_point_matching(
+        x1=u_R, F1_target=upper_pct / 100.0, f1_target=f1_R,
+        x2=x2_R, f2_target=f2_R,
+        init_loc=float(np.median(R_data)), init_scale=float(np.std(R_data)))
+    right_mask = R_grid > u_R
+    p_R[right_mask] = stats.genextreme.pdf(
+        R_grid[right_mask], c_R, loc=loc_R, scale=scale_R)
+    diagnostics["gev_right"] = {"c_scipy": c_R, "loc": loc_R,
+                                "scale": scale_R, **info_R}
 
-# Estimator 2: Gaussian KDE
-def estimate_physical_density_kde(
-    spot: np.ndarray, R_grid: np.ndarray, horizon: int = 27, lower_pct: int = 10, upper_pct: int = 90) -> PhysicalDensity:
+    # Step 3b: left tail -- GEV on the mirrored variable Y = -R at (q10, q5)
+    y1 = -u_L
+    y2 = -float(np.percentile(R_data, lower_pct - anchor_offset_pct))
+    f1_L = max(_empirical_pdf_at(u_L, R_data, n_bins), float(poly_fn(u_L)), 1e-10)
+    f2_L = max(_empirical_pdf_at(-y2, R_data, n_bins), 1e-10)
+    c_L, loc_L, scale_L, info_L = _fit_gev_point_matching(
+        x1=y1, F1_target=1.0 - lower_pct / 100.0, f1_target=f1_L,
+        x2=y2, f2_target=f2_L,
+        init_loc=float(np.median(-R_data)), init_scale=float(np.std(R_data)))
+    left_mask = R_grid < u_L
+    p_R[left_mask] = stats.genextreme.pdf(
+        -R_grid[left_mask], c_L, loc=loc_L, scale=scale_L)
+    diagnostics["gev_left"] = {"c_scipy": c_L, "loc": loc_L,
+                               "scale": scale_L, **info_L}
+
+    # Guards: tails must be monotone away from the splice
+    tail_R = p_R[right_mask]
+    if tail_R.size > 2 and int(np.argmax(tail_R)) != 0:
+        warnings.warn("Right GEV tail has an interior mode; inspect diagnostics.")
+    tail_L = p_R[left_mask]
+    if tail_L.size > 2 and int(np.argmax(tail_L)) != tail_L.size - 1:
+        warnings.warn("Left GEV tail has an interior mode; inspect diagnostics.")
+
+    # Step 4: single global renormalization (mass ~ 1 by construction)
+    mass = float(np.trapezoid(p_R, R_grid))
+    diagnostics["mass_pre_norm"] = mass
+    if mass <= 0:
+        raise RuntimeError("Non-positive density mass; tail fit failed.")
+    p_R = p_R / mass
+    diagnostics["tail_mass_left"] = float(
+        np.trapezoid(p_R[left_mask], R_grid[left_mask]))
+    diagnostics["tail_mass_right"] = float(
+        np.trapezoid(p_R[right_mask], R_grid[right_mask]))
+
+    return PhysicalDensity(R_grid=R_grid, p_R=p_R, method="almeida",
+                           n_returns=len(R_data), bandwidth=None,
+                           diagnostics=diagnostics)
+
+# Estimator 2: Gaussian KDE body + mass-preserving POT GPD tails
+def estimate_physical_density_kde(spot: np.ndarray, R_grid: np.ndarray, horizon: int = 27,
+    lower_pct: int = 10, upper_pct: int = 90) -> PhysicalDensity:
     R_data = compute_overlapping_returns(spot, horizon)
     return estimate_physical_density_kde_from_returns(
         R_data, R_grid, lower_pct=lower_pct, upper_pct=upper_pct)
 
-def estimate_physical_density_kde_from_returns(
-    R_data: np.ndarray, R_grid: np.ndarray, lower_pct: int = 10, upper_pct: int = 90) -> PhysicalDensity:
+def estimate_physical_density_kde_from_returns(R_data: np.ndarray, R_grid: np.ndarray,
+    lower_pct: int = 10, upper_pct: int = 90) -> PhysicalDensity:
 
-    # Gaussian KDE with Scott's rule (approximates Sheather-Jones for large n)
+    R_grid = np.asarray(R_grid, dtype=float)
+
     kde = stats.gaussian_kde(R_data, bw_method="scott")
-    p_body = kde(R_grid)
+    p_R = np.asarray(kde(R_grid), dtype=float)
     bw = kde.factor * R_data.std(ddof=1)
 
-    # Splice GPD tails and renormalize
-    p_R = _splice_and_normalize(R_grid, p_body, R_data, lower_pct, upper_pct,
-                                tail_type="gpd")
+    u_L = float(np.percentile(R_data, lower_pct))
+    u_R = float(np.percentile(R_data, upper_pct))
+    tail_prob_L = lower_pct / 100.0
+    tail_prob_R = 1.0 - upper_pct / 100.0
+    diagnostics = {"u_L": u_L, "u_R": u_R}
 
-    return PhysicalDensity(R_grid=R_grid, p_R=p_R, method="kde", n_returns=len(R_data), bandwidth=bw)
+    # Left tail: POT splice, unconditional density = tail_prob * f_GPD
+    left_data = R_data[R_data < u_L]
+    if len(left_data) > 10:
+        shape_L, scale_L = _fit_gpd_tail(u_L - left_data)
+        left_mask = R_grid < u_L
+        p_R[left_mask] = tail_prob_L * stats.genpareto.pdf(
+            u_L - R_grid[left_mask], shape_L, loc=0, scale=scale_L)
+        diagnostics["gpd_left"] = {"shape": float(shape_L), "scale": float(scale_L)}
+
+    # Right tail: POT splice
+    right_data = R_data[R_data > u_R]
+    if len(right_data) > 10:
+        shape_R, scale_R = _fit_gpd_tail(right_data - u_R)
+        right_mask = R_grid > u_R
+        p_R[right_mask] = tail_prob_R * stats.genpareto.pdf(
+            R_grid[right_mask] - u_R, shape_R, loc=0, scale=scale_R)
+        diagnostics["gpd_right"] = {"shape": float(shape_R), "scale": float(scale_R)}
+
+    # Floor at zero and single global renormalization
+    p_R = np.maximum(p_R, 0.0)
+    mass = float(np.trapezoid(p_R, R_grid))
+    diagnostics["mass_pre_norm"] = mass
+    if mass > 0:
+        p_R = p_R / mass
+    diagnostics["tail_mass_left"] = float(
+        np.trapezoid(p_R[R_grid < u_L], R_grid[R_grid < u_L]))
+    diagnostics["tail_mass_right"] = float(
+        np.trapezoid(p_R[R_grid > u_R], R_grid[R_grid > u_R]))
+
+    return PhysicalDensity(R_grid=R_grid, p_R=p_R, method="kde",
+                           n_returns=len(R_data), bandwidth=bw,
+                           diagnostics=diagnostics)
