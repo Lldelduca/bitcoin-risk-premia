@@ -128,6 +128,19 @@ class SSVI:
                     args=(theta, k, T, iv_mkt),
                     seed=42,
                 )
+
+                if res.success:
+                    res_polish = minimize(
+                        self._objective_smile,
+                        res.x,
+                        args=(theta, k, T, iv_mkt),
+                        method="SLSQP",
+                        bounds=bounds,
+                        constraints=constraints,
+                        options={"ftol": 1e-12, "maxiter": max_iter},
+                    )
+                    if res_polish.success:
+                        res = res_polish
             else:
                 res = minimize(
                     self._objective_smile,
@@ -365,4 +378,3 @@ class SSVI:
                 "forward": float(self._surface["F"][i]),
             })
         return rows
-    
