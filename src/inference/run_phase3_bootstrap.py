@@ -5,13 +5,12 @@ Percentile confidence intervals and sign frequencies on (b, c, d) evaluated at t
 
 Design:
   - Days are resampled with a circular moving-block bootstrap
-  - Each replicate is a FULL re-estimation of the conditional kernel, warm-started at the full-sample theta 
-  - Coefficients are evaluated at the SAME full-sample tercile-mean Z vectors in every replicate, 
+  - Each replicate is a FULL re-estimation of the conditional kernel, warm-started at the full-sample theta
+  - Coefficients are evaluated at the SAME full-sample tercile-mean Z vectors in every replicate,
     so the intervals are intervals for "c in the low-vol state" — parameter uncertainty only, not state-
     definition randomness.
-  - The physical density and the tercile-mean states are held fixed at their full-sample values; the dominant 
+  - The physical density and the tercile-mean states are held fixed at their full-sample values; the dominant
     uncertainty here is theta.
-
 """
 
 import argparse
@@ -24,7 +23,7 @@ from src.config import get_path, get_return_grid
 from src.pricing_kernel.conditional_kernel import (estimate_conditional_kernel, coefficients_at)
 from src.inference.bootstrap_inference import circular_block_indices
 from src.pricing_kernel.run_phase3 import (load_daily_rnds_from_parquet, load_conditioning_spec, align_rnds_and_Z,
-    PHASE2_DIR, PHASE3_DIR, TAB_DIR, SPECS)
+    load_volatility_tercile_labels, PHASE2_DIR, PHASE3_DIR, TAB_DIR, SPECS)
 
 R_GRID = get_return_grid()
 
@@ -32,13 +31,15 @@ BLOCK_LENGTH = 27
 DEFAULT_B = 200
 MAX_ITER_REPLICATE = 3000
 
-def _tercile_mean_states(Z_matrix):
-    vol_proxy = Z_matrix[:, 0]
-    edges = np.percentile(vol_proxy, [33.33, 66.67])
-    labels = np.digitize(vol_proxy, bins=edges)
+def _tercile_mean_states(Z_matrix, tercile_labels):
+    labels = np.asarray(tercile_labels, dtype=object)
+    if len(labels) != Z_matrix.shape[0]:
+        raise ValueError(
+            f"_tercile_mean_states: labels length {len(labels)} != "
+            f"T {Z_matrix.shape[0]}")
     out = {}
-    for lab, name in zip([0, 1, 2], ["low", "mid", "high"]):
-        mask = labels == lab
+    for name in ["low", "mid", "high"]:
+        mask = labels == name
         if mask.sum() > 0:
             out[name] = Z_matrix[mask].mean(axis=0)
     return out
@@ -88,13 +89,14 @@ def run_bootstrap(venues, spec_name, B, workers, ci=0.95):
         )
 
     z_dates, Z_matrix_full, z_cols = load_conditioning_spec(spec_name)
+    tercile_df = load_volatility_tercile_labels()
 
     summary_rows = []
     for venue in venues:
         print(f"\n  [{venue}] Preparing data...")
         rnd_dates, rnds = load_daily_rnds_from_parquet(venue, tau_days=27)
-        dates, aligned_rnds, Z = align_rnds_and_Z(
-            rnd_dates, rnds, z_dates, Z_matrix_full
+        dates, aligned_rnds, Z, labels = align_rnds_and_Z(
+            rnd_dates, rnds, z_dates, Z_matrix_full, tercile_df=tercile_df
         )
         Q = np.stack(aligned_rnds)
         print(f"  [{venue}] {Q.shape[0]} aligned days, n_Z = {Z.shape[1]}")
@@ -113,7 +115,11 @@ def run_bootstrap(venues, spec_name, B, workers, ci=0.95):
                   f"run_phase3 first.")
             continue
 
-        tercile_states = _tercile_mean_states(Z)
+        tercile_states = _tercile_mean_states(Z, labels)
+        for name, Z_vec in tercile_states.items():
+            n_t = int((np.asarray(labels, dtype=object) == name).sum())
+            print(f"    tercile '{name}': {n_t} days "
+                  f"(full-sample Z_IVS_1 labels)")
 
         jobs = [{
             "seed": 10_000 + b, "Q": Q, "Z": Z, "p_phys": p_phys,
@@ -186,3 +192,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     run_bootstrap(args.venues, args.spec, args.B, args.workers)
+    

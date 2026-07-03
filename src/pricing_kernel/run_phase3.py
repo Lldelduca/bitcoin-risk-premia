@@ -73,14 +73,30 @@ def load_conditioning_spec(spec_name):
     z_cols = [c for c in df.columns if c != "date" and not c.endswith("_raw")]
     return df["date"].values, df[z_cols].values, z_cols
 
-def align_rnds_and_Z(rnd_dates, rnds, z_dates, Z_matrix):
+def load_volatility_tercile_labels():
+    Z_crypto = pd.read_parquet(COND_DIR / "Z_crypto.parquet")
+    Z_crypto["date"] = pd.to_datetime(Z_crypto["date"])
+    Z_crypto["tercile"] = pd.qcut(Z_crypto["Z_IVS_1"], q=3,
+                                  labels=["low", "mid", "high"])
+    return Z_crypto[["date", "tercile"]]
+
+def align_rnds_and_Z(rnd_dates, rnds, z_dates, Z_matrix, tercile_df=None):
     rnd_df = pd.DataFrame({"date": rnd_dates, "idx": range(len(rnd_dates))})
     z_df = pd.DataFrame({"date": z_dates, "z_idx": range(len(z_dates))})
     merged = rnd_df.merge(z_df, on="date", how="inner").sort_values("date")
+    if tercile_df is not None:
+        merged = merged.merge(tercile_df, on="date", how="left")
+        if merged["tercile"].isna().any():
+            n_miss = int(merged["tercile"].isna().sum())
+            raise ValueError(
+                f"align_rnds_and_Z: {n_miss} aligned days have no full-sample "
+                f"tercile label; check Z_crypto coverage."
+            )
     dates = merged["date"].values
     aligned_rnds = [rnds[i] for i in merged["idx"].values]
     aligned_Z = Z_matrix[merged["z_idx"].values]
-    return dates, aligned_rnds, aligned_Z
+    labels = merged["tercile"].astype(object).values if tercile_df is not None else None
+    return dates, aligned_rnds, aligned_Z, labels
 
 def _run_single_estimation(job):
     venue = job["venue"]
@@ -91,6 +107,7 @@ def _run_single_estimation(job):
     Z_matrix = job["Z_matrix"]
     dates = job["dates"]
     z_cols = job["z_cols"]
+    tercile_labels = job["tercile_labels"]
 
     result = estimate_conditional_kernel(
         R_grid, q_obs_list, p_phys, Z_matrix,
@@ -98,7 +115,7 @@ def _run_single_estimation(job):
         max_iter=MAX_ITER, theta0=None,
     )
 
-    terciles = evaluate_kernel_at_terciles(result, R_grid, Z_matrix)
+    terciles = evaluate_kernel_at_terciles(result, R_grid, Z_matrix, tercile_labels=tercile_labels)
     coeffs = get_coefficient_timeseries(result, Z_matrix)
 
     return {
@@ -111,6 +128,7 @@ def _run_single_estimation(job):
         "dates": dates,
         "Z": Z_matrix,
         "z_cols": z_cols,
+        "tercile_labels": tercile_labels,
     }
 
 def run_phase3():
@@ -131,6 +149,12 @@ def run_phase3():
     for venue in VENUES:
         venue_rnds[venue] = load_daily_rnds_from_parquet(venue, tau_days=27)
 
+    # Full-sample volatility tercile labels (shared with Phases 4 and 5)
+    tercile_df = load_volatility_tercile_labels()
+    print(f"  Loaded full-sample Z_IVS_1 tercile labels: "
+          f"{len(tercile_df)} days, "
+          f"counts = {tercile_df['tercile'].value_counts().to_dict()}")
+
     # Pre-load conditioning specs
     spec_data = {}
     for spec_name in SPECS:
@@ -145,8 +169,8 @@ def run_phase3():
         sd = spec_data[spec_name]
         for venue in VENUES:
             rnd_dates, rnds = venue_rnds[venue]
-            dates, aligned_rnds, aligned_Z = align_rnds_and_Z(
-                rnd_dates, rnds, sd["dates"], sd["Z"]
+            dates, aligned_rnds, aligned_Z, labels = align_rnds_and_Z(
+                rnd_dates, rnds, sd["dates"], sd["Z"], tercile_df=tercile_df
             )
             print(f"    [{venue}|{spec_name}] Aligned: {len(dates)} days, "
                   f"n_Z={aligned_Z.shape[1]}")
@@ -164,6 +188,7 @@ def run_phase3():
                 "Z_matrix": aligned_Z,
                 "dates": dates,
                 "z_cols": sd["cols"],
+                "tercile_labels": labels,
             })
 
     # Run all jobs in parallel
@@ -206,14 +231,15 @@ def run_phase3():
                 for tn in ["low", "mid", "high"]:
                     if tn in terciles:
                         row[f"c_{tn}"] = terciles[tn]["c"]
+                        row[f"n_{tn}"] = terciles[tn]["n_days"]
                 summary_rows.append(row)
 
-                # Save per-estimation outputs
                 np.savez(
                     PHASE3_DIR / f"phase3_{key}.npz",
                     theta=result.theta, dates=dates,
                     coeffs_b=coeffs["b"],
                     coeffs_c=coeffs["c"], coeffs_d=coeffs["d"],
+                    tercile_labels=np.asarray(out["tercile_labels"], dtype=str),
                 )
 
             except Exception as e:
