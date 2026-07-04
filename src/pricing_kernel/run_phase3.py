@@ -115,7 +115,10 @@ def _run_single_estimation(job):
         max_iter=MAX_ITER, theta0=None,
     )
 
-    terciles = evaluate_kernel_at_terciles(result, R_grid, Z_matrix, tercile_labels=tercile_labels)
+    # v2: kernels at tercile-mean states normalized mean-one under p
+    terciles = evaluate_kernel_at_terciles(result, R_grid, Z_matrix,
+                                           tercile_labels=tercile_labels,
+                                           p_phys=p_phys)
     coeffs = get_coefficient_timeseries(result, Z_matrix)
 
     return {
@@ -217,6 +220,12 @@ def run_phase3():
 
                 print(f"\n  [{key}] Converged: {result.converged}, "
                       f"KL mean={result.kl_mean:.6f}")
+                # v2 diagnostic: the mean-one normalization must hold exactly
+                for tn in ["low", "mid", "high"]:
+                    if tn in terciles and "p_mean_check" in terciles[tn]:
+                        print(f"    [{key}] tercile {tn}: "
+                              f"∫p·m = {terciles[tn]['p_mean_check']:.4f}, "
+                              f"argmax log m at R = {terciles[tn]['argmax_R']:.2f}")
 
                 # Summary row
                 row = {
@@ -234,6 +243,7 @@ def run_phase3():
                         row[f"n_{tn}"] = terciles[tn]["n_days"]
                 summary_rows.append(row)
 
+                # Save per-estimation outputs
                 np.savez(
                     PHASE3_DIR / f"phase3_{key}.npz",
                     theta=result.theta, dates=dates,
@@ -279,7 +289,7 @@ def _plot_kernel_terciles(result, terciles, venue, spec_name):
     ax.axhline(1.0, color="gray", lw=0.5, ls=":")
     ax.axvline(1.0, color="gray", lw=0.5, ls=":")
     ax.set_xlabel("Gross return $R$")
-    ax.set_ylabel(r"$\hat{m}^j(R \mid Z_t)$")
+    ax.set_ylabel(r"$\hat{m}^j(R \mid Z_t)$  (mean-one under $\hat{p}$)")
     ax.set_xlim(0.50, 1.60)
     ax.set_ylim(0, 5)
     ax.set_title(f"Conditional Kernel by Vol Tercile: {venue}, $Z^{{({spec_name})}}$")

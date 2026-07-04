@@ -20,7 +20,6 @@ from scipy.optimize import minimize
 from typing import NamedTuple
 
 class ConditionalKernelResult(NamedTuple):
-    """Container for conditional kernel estimation results."""
     theta: np.ndarray
     n_params: int
     n_days: int
@@ -48,6 +47,19 @@ def _compute_coefficients(theta, Z_t, n_Z):
 
 def _log_kernel(R_grid, b_t, c_t, d_t):
     return b_t * R_grid + c_t * R_grid**2 + d_t * R_grid**3
+
+def _normalize_kernel(log_m, R_grid, p_phys=None):
+    log_m = np.asarray(log_m, dtype=float)
+    shift = np.max(log_m)
+    m_sh = np.exp(log_m - shift)
+    if p_phys is not None:
+        Z = np.trapezoid(np.asarray(p_phys, dtype=float) * m_sh, R_grid)
+        if np.isfinite(Z) and Z > 0:
+            return m_sh / Z
+    idx = int(np.argmin(np.abs(np.asarray(R_grid) - 1.0)))
+    if m_sh[idx] <= 0:
+        return m_sh
+    return m_sh / m_sh[idx]
 
 def _kl_single_day(theta, R_grid, q_obs, p_phys, Z_t, n_Z):
     b_t, c_t, d_t = _compute_coefficients(theta, Z_t, n_Z)
@@ -152,18 +164,18 @@ def estimate_conditional_kernel(
 def coefficients_at(theta, Z_vec, n_Z):
     return _compute_coefficients(np.asarray(theta, dtype=float), np.asarray(Z_vec, dtype=float), n_Z)
 
-def evaluate_kernel(result, R_grid, Z_t):
+def evaluate_kernel(result, R_grid, Z_t, p_phys=None):
     b_t, c_t, d_t = _compute_coefficients(result.theta, Z_t, result.n_Z)
     log_m = _log_kernel(R_grid, b_t, c_t, d_t)
-    log_m -= np.max(log_m)
-    return np.exp(log_m)
+    return _normalize_kernel(log_m, R_grid, p_phys=p_phys)
 
 def tercile_labels_from_series(vol_series) -> np.ndarray:
     import pandas as pd
     return pd.qcut(pd.Series(np.asarray(vol_series, dtype=float)),
                    q=3, labels=["low", "mid", "high"]).astype(object).values
 
-def evaluate_kernel_at_terciles(result, R_grid, Z_matrix, tercile_labels=None):
+def evaluate_kernel_at_terciles(result, R_grid, Z_matrix, tercile_labels=None, p_phys=None):
+
     if tercile_labels is not None:
         labels = np.asarray(tercile_labels, dtype=object)
         if len(labels) != Z_matrix.shape[0]:
@@ -188,13 +200,18 @@ def evaluate_kernel_at_terciles(result, R_grid, Z_matrix, tercile_labels=None):
             result.theta, Z_mean, result.n_Z
         )
         log_m = _log_kernel(R_grid, b_t, c_t, d_t)
-        log_m -= np.max(log_m)
-        out[name] = {
-            "kernel": np.exp(log_m),
+        kernel = _normalize_kernel(log_m, R_grid, p_phys=p_phys)
+        entry = {
+            "kernel": kernel,
             "Z_mean": Z_mean,
             "b": b_t, "c": c_t, "d": d_t,
             "n_days": int(mask.sum()),
+            "argmax_R": float(R_grid[int(np.argmax(log_m))]),
         }
+        if p_phys is not None:
+            entry["p_mean_check"] = float(
+                np.trapezoid(np.asarray(p_phys) * kernel, R_grid))
+        out[name] = entry
     return out
 
 def get_coefficient_timeseries(result, Z_matrix):
