@@ -155,7 +155,7 @@ def phase_1c_tensor():
     _check_file(surfaces_dir / "tensor_pca_diagnostics.csv", "Almeida diagnostics")
     _check_file(surfaces_dir / "tensor_pca_state.parquet", "Z_IVS state vector")
 
-def phase_2_conditioning():
+def phase_1d_conditioning():
     """Build conditioning vectors (Z_crypto, Z_macro, Z_full)."""
     import sys
     sys.path.insert(0, str(Path.cwd()))
@@ -173,7 +173,7 @@ def phase_2_conditioning():
         print(f"  [checkpoint] corr(Z_IVS_1, RV) = {rho:+.3f} (must be > 0)")
         assert rho > 0, "Sign convention violated — re-run Phase 1c"
 
-def phase_3_ep(spot_data=None):
+def phase_2_ep(spot_data=None):
     """Physical density estimation and equity premium decomposition."""
     import sys
     sys.path.insert(0, str(Path.cwd()))
@@ -194,7 +194,7 @@ def phase_3_ep(spot_data=None):
         print(f"  [checkpoint] raw-moment EP: {r['point']:+.4f} "
               f"[{r['ci_lo']:+.4f}, {r['ci_hi']:+.4f}]")
 
-def phase_4_kernel():
+def phase_3_kernel():
     """Conditional pricing kernel estimation (new (b,c,d) parameterization)."""
     import sys
     sys.path.insert(0, str(Path.cwd()))
@@ -220,9 +220,8 @@ def phase_4_kernel():
 
     _check_file(phase3_dir / "mfk_unconditional.npz", "MFK (block-bootstrap bands)")
 
-def phase_4_kernel_bootstrap(B=200, workers=6):
-    """Block-bootstrap CIs for the tercile kernel coefficients.
-    Heavy job — runs after Phase 4 kernel estimation."""
+def phase_3b_kernel_bootstrap(B=200, workers=6):
+    """Block-bootstrap CIs for the tercile kernel coefficients."""
     import sys
     sys.path.insert(0, str(Path.cwd()))
     from src.phase3.run_phase3_bootstrap import run_bootstrap
@@ -240,7 +239,7 @@ def phase_4_kernel_bootstrap(B=200, workers=6):
                   f"{r['point']:+.3f} [{r['ci_lo']:+.3f}, {r['ci_hi']:+.3f}]  "
                   f"P(c<0) = {r['frac_negative']:.3f}")
 
-def phase_5_bkm():
+def phase_4_bkm():
     """BKM moment extraction and CL20/CL24 cumulant decomposition."""
     import sys
     sys.path.insert(0, str(Path.cwd()))
@@ -271,7 +270,7 @@ def phase_5_bkm():
             print(f"  [checkpoint] {venue} kurtosis share range "
                   f"across κ bounds: [{lo:.3f}, {hi:.3f}]")
 
-def phase_6_cross_venue():
+def phase_5_cross_venue():
     """Cross-venue MFK, panel regressions, regional decomposition."""
     import sys
     sys.path.insert(0, str(Path.cwd()))
@@ -303,12 +302,12 @@ PHASE_ORDER = [
     ("1a", "SSVI Surface Fitting",            phase_1a_surfaces),
     ("1b", "RND Extraction (Figlewski tails)", phase_1b_densities),
     ("1c", "CP Tensor Decomposition",          phase_1c_tensor),
-    ("2",  "Conditioning Vectors",             phase_2_conditioning),
-    ("3",  "Physical Density & EP Decomp",     phase_3_ep),
-    ("4",  "Conditional Pricing Kernel",       phase_4_kernel),
-    ("4b", "Kernel Bootstrap (heavy)",         None),  # special handling
-    ("5",  "BKM / CL20 Decomposition",        phase_5_bkm),
-    ("6",  "Cross-Venue Analysis",             phase_6_cross_venue),
+    ("1d", "Conditioning Vectors",             phase_1d_conditioning),
+    ("2",  "Physical Density & EP Decomp",     phase_2_ep),
+    ("3",  "Conditional Pricing Kernel",       phase_3_kernel),
+    ("3b", "Kernel Bootstrap (heavy)",         None),  # special handling
+    ("4",  "BKM / CL20 Decomposition",         phase_4_bkm),
+    ("5",  "Cross-Venue Analysis",             phase_5_cross_venue),
 ]
 
 PHASE_LABELS = {tag: name for tag, name, _ in PHASE_ORDER}
@@ -320,8 +319,8 @@ def main():
         epilog="""
 Examples:
   python main.py                        # full pipeline
-  python main.py --from 3               # resume from Phase 3 (EP)
-  python main.py --only 5 6             # run only Phases 5 and 6
+  python main.py --from 2               # resume from Phase 2 (EP)
+  python main.py --only 4 5             # run only Phases 4 and 5
   python main.py --skip-bootstrap       # skip the heavy kernel bootstrap
   python main.py --bootstrap-B 50       # quick bootstrap (50 replicates)
   python main.py --skip 1a 1b 1c        # skip surface fitting & RNDs
@@ -334,7 +333,7 @@ Examples:
     parser.add_argument("--skip", nargs="+", default=None,
                         help="Skip these phases")
     parser.add_argument("--skip-bootstrap", action="store_true",
-                        help="Skip the Phase 4b kernel bootstrap")
+                        help="Skip the Phase 3b kernel bootstrap")
     parser.add_argument("--bootstrap-B", type=int, default=200,
                         help="Number of bootstrap replicates (default 200)")
     parser.add_argument("--bootstrap-workers", type=int, default=6,
@@ -362,7 +361,7 @@ Examples:
     if args.skip:
         run_tags -= set(args.skip)
     if args.skip_bootstrap:
-        run_tags.discard("4b")
+        run_tags.discard("3b")
 
     print("\n" + "#" * 70)
     print("#" + " " * 68 + "#")
@@ -382,10 +381,10 @@ Examples:
         if tag not in run_tags:
             continue
 
-        # Phase 4b (bootstrap) needs special argument forwarding
-        if tag == "4b":
+        # Phase 3b (bootstrap) needs special argument forwarding
+        if tag == "3b":
             with PhaseTimer(f"Phase {tag}: {name}", manifest) as _:
-                phase_4_kernel_bootstrap(
+                phase_3b_kernel_bootstrap(
                     B=args.bootstrap_B,
                     workers=args.bootstrap_workers,
                 )
