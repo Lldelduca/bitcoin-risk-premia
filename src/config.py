@@ -1,41 +1,38 @@
-import yaml
 from pathlib import Path
+import yaml
 
-# Identify the root directory dynamically
-BASE_DIR = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+CONFIG_PATH = PROJECT_ROOT / "config.yaml"
+_CONFIG_CACHE = None
 
-with open(BASE_DIR / 'config.yaml', 'r') as file:
-    cfg = yaml.safe_load(file)
+def load_config() -> dict:
+    global _CONFIG_CACHE
+    if _CONFIG_CACHE is None:
+        if not CONFIG_PATH.exists():
+            raise FileNotFoundError(f"Configuration file not found: {CONFIG_PATH}")
+        with open(CONFIG_PATH, "r") as f:
+            _CONFIG_CACHE = yaml.safe_load(f)
+    return _CONFIG_CACHE
 
-PATHS = cfg['paths']
+def get_path(key: str) -> Path:
+    cfg = load_config()
+    paths = cfg.get("paths", {})
+    
+    if key not in paths:
+        raise KeyError(f"Path key '{key}' not found under 'paths' in config.yaml")
+        
+    return PROJECT_ROOT / paths[key]
 
-# Sample window
-SAMPLE = cfg['sample']
+def get_filters(dataset: str = "shared") -> dict:
+    cfg = load_config()
+    key = f"filters_{dataset}"
+    
+    if key not in cfg:
+        raise KeyError(f"Filter key '{key}' not found in config.yaml")
+        
+    return cfg[key]
 
-# Shared filters (apply to both venues)
-FILTERS_SHARED = cfg['filters_shared']
-
-# Venue-specific filters
-FILTERS_CME = {**FILTERS_SHARED, **cfg['filters_cme']}
-FILTERS_DERIBIT = {**FILTERS_SHARED, **cfg['filters_deribit']}
-
-# SSVI fitting parameters
-SSVI_CONFIG = cfg['ssvi']
-
-# Tensor PCA grid (consumed by Phase 1b, not Phase 1a)
-TENSOR_GRID = cfg.get('tensor_grid', {})
-
-def get_path(path_key: str) -> Path:
-    """Returns absolute path from config key."""
-    return BASE_DIR / PATHS[path_key]
-
-# API keys for FRED); not committed to version control
-API_KEYS = cfg.get("api_keys", {})
-
-# Shared gross-return grid for Phases 2, 3, and 5
-RETURN_GRID = cfg.get('return_grid', {'min': 0.40, 'max': 2.00, 'points': 1000})
-
-def get_return_grid():
-    import numpy as np
-    return np.linspace(float(RETURN_GRID['min']), float(RETURN_GRID['max']),
-                       int(RETURN_GRID['points']))
+def get_sample_window() -> tuple[str, str]:
+    cfg = load_config()
+    sample = cfg.get("sample", {})
+    return sample.get("start_date"), sample.get("end_date")
