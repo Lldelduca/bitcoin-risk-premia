@@ -121,6 +121,9 @@ def _run_single_estimation(job):
                                            p_phys=p_phys)
     coeffs = get_coefficient_timeseries(result, Z_matrix)
 
+    # v2.1: time-averaged RND marks where the kernel is data-identified
+    q_bar = np.mean(np.stack(q_obs_list), axis=0)
+
     return {
         "key": f"{venue}_{spec_name}",
         "venue": venue,
@@ -132,6 +135,7 @@ def _run_single_estimation(job):
         "Z": Z_matrix,
         "z_cols": z_cols,
         "tercile_labels": tercile_labels,
+        "q_bar": q_bar,
     }
 
 def run_phase3():
@@ -243,7 +247,8 @@ def run_phase3():
                         row[f"n_{tn}"] = terciles[tn]["n_days"]
                 summary_rows.append(row)
 
-                # Save per-estimation outputs
+                # Save per-estimation outputs (tercile labels included so
+                # downstream consumers and notebooks never recompute them)
                 np.savez(
                     PHASE3_DIR / f"phase3_{key}.npz",
                     theta=result.theta, dates=dates,
@@ -267,7 +272,8 @@ def run_phase3():
     print("\n  Generating figures...")
     for key, out in all_results.items():
         _plot_kernel_terciles(out["result"], out["terciles"],
-                              out["venue"], out["spec_name"])
+                              out["venue"], out["spec_name"],
+                              q_bar=out.get("q_bar"))
         _plot_coefficient_timeseries(out["coeffs"], out["dates"],
                                      out["venue"], out["spec_name"])
 
@@ -277,9 +283,31 @@ def run_phase3():
     print(f"\n  Phase 3 complete. Figures in {FIG_DIR}/")
     return all_results
 
-def _plot_kernel_terciles(result, terciles, venue, spec_name):
+def _plot_kernel_terciles(result, terciles, venue, spec_name, q_bar=None):
+    """Tercile kernels normalized mean-one under the physical density.
+
+    Directly comparable to the Phase 2 unconditional q/p kernel. Regions
+    where the time-averaged RND carries negligible mass (q_bar < 0.05)
+    are shaded: there the cubic log-kernel is extrapolation, not
+    data-identified shape, and should not be interpreted.
+    """
     fig, ax = plt.subplots(figsize=(12, 5))
     colors = {"low": "C2", "mid": "C7", "high": "C3"}
+
+    if q_bar is not None:
+        weak = np.asarray(q_bar) < 0.05
+        if weak.any():
+            # shade contiguous weak segments at both edges
+            in_weak = False
+            start = None
+            for i, w in enumerate(list(weak) + [False]):
+                if w and not in_weak:
+                    start, in_weak = i, True
+                elif not w and in_weak:
+                    ax.axvspan(R_GRID[start], R_GRID[min(i, len(R_GRID) - 1)],
+                               color="0.85", alpha=0.5, zorder=0)
+                    in_weak = False
+
     for name in ["low", "mid", "high"]:
         if name not in terciles:
             continue
@@ -292,7 +320,8 @@ def _plot_kernel_terciles(result, terciles, venue, spec_name):
     ax.set_ylabel(r"$\hat{m}^j(R \mid Z_t)$  (mean-one under $\hat{p}$)")
     ax.set_xlim(0.50, 1.60)
     ax.set_ylim(0, 5)
-    ax.set_title(f"Conditional Kernel by Vol Tercile: {venue}, $Z^{{({spec_name})}}$")
+    ax.set_title(f"Conditional Kernel by Vol Tercile: {venue}, "
+                 f"$Z^{{({spec_name})}}$ (shaded: weakly identified)")
     ax.legend()
     plt.tight_layout()
     plt.savefig(FIG_DIR / f"fig_kernel_terciles_{venue}_{spec_name}.png", dpi=150)

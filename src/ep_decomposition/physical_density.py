@@ -2,10 +2,12 @@
 Two estimators for the unconditional physical density p(R) of 27-day Bitcoin gross spot returns:
 
   1. Almeida et al. (2026) / Figlewski (2008)
-     Full-sample 27-day returns -> histogram body -> 10th-order polynomial smoothing on [q10, q90] -> GEV tails
+     Full-sample 27-day returns -> histogram body -> 10th-order polynomial
+     smoothing on [q10, q90] -> GEV tails calibrated by POINT MATCHING.
 
   2. Gaussian KDE with Scott's rule
-     Full-sample 27-day returns -> Gaussian KDE -> GPD tails via a mass-preserving peaks-over-threshold splice.
+     Full-sample 27-day returns -> Gaussian KDE -> GPD tails via a
+     mass-preserving peaks-over-threshold splice.
 
 """
 
@@ -29,7 +31,10 @@ def compute_overlapping_returns(spot: np.ndarray, horizon: int = 27) -> np.ndarr
     R = spot[horizon:] / spot[:-horizon]
     return R[np.isfinite(R) & (R > 0)]
 
+
 def _empirical_pdf_at(x: float, R_data: np.ndarray, n_bins: int) -> float:
+    """Empirical density at x from the histogram used for the body; falls
+    back to a Gaussian KDE evaluation if the anchor bin is empty."""
     counts, edges = np.histogram(R_data, bins=n_bins, density=True)
     idx = int(np.clip(np.searchsorted(edges, x, side="right") - 1, 0, n_bins - 1))
     val = float(counts[idx])
@@ -49,14 +54,19 @@ def _splice_pdf_target(poly_fn, x: float, R_data: np.ndarray, n_bins: int):
     )
     return max(hist_at, 1e-10), "histogram_fallback"
 
+
 def _fit_gpd_tail(excesses: np.ndarray):
+    """MLE GPD fit to threshold excesses (correct for the POT splice)."""
     shape, _, scale = stats.genpareto.fit(excesses, floc=0)
     return shape, scale
 
 # GEV point-matching fit (Figlewski 2008)
-def _fit_gev_point_matching(x1: float, F1_target: float, f1_target: float, x2: float, f2_target: float,
-    init_loc: float, init_scale: float, w_cdf: float = 10.0):
-
+def _fit_gev_point_matching(
+    x1: float, F1_target: float, f1_target: float,
+    x2: float, f2_target: float,
+    init_loc: float, init_scale: float,
+    w_cdf: float = 10.0,
+):
     mono_grid = x1 + np.linspace(0.0, 6.0, 60) * max(x2 - x1, 1e-3)
 
     def residuals(params):
@@ -98,15 +108,21 @@ def _fit_gev_point_matching(x1: float, F1_target: float, f1_target: float, x2: f
     return float(c), float(loc), float(np.exp(log_scale)), info
 
 # Estimator 1: Almeida et al. (2026) body + Figlewski GEV tails
-def estimate_physical_density_almeida(spot: np.ndarray, R_grid: np.ndarray, horizon: int = 27, n_bins: int = 12,
-    poly_order: int = 10, lower_pct: int = 10, upper_pct: int = 90) -> PhysicalDensity:
-
+def estimate_physical_density_almeida(
+    spot: np.ndarray, R_grid: np.ndarray, horizon: int = 27, n_bins: int = 12,
+    poly_order: int = 10, lower_pct: int = 10, upper_pct: int = 90,
+) -> PhysicalDensity:
     R_data = compute_overlapping_returns(spot, horizon)
-    return estimate_physical_density_almeida_from_returns(R_data, R_grid, n_bins=n_bins, poly_order=poly_order,
-                                                          lower_pct=lower_pct, upper_pct=upper_pct)
+    return estimate_physical_density_almeida_from_returns(
+        R_data, R_grid, n_bins=n_bins, poly_order=poly_order,
+        lower_pct=lower_pct, upper_pct=upper_pct)
 
-def estimate_physical_density_almeida_from_returns(R_data: np.ndarray, R_grid: np.ndarray, n_bins: int = 12,
-    poly_order: int = 10, lower_pct: int = 10, upper_pct: int = 90,anchor_offset_pct: float = 5.0) -> PhysicalDensity:
+
+def estimate_physical_density_almeida_from_returns(
+    R_data: np.ndarray, R_grid: np.ndarray, n_bins: int = 12,
+    poly_order: int = 10, lower_pct: int = 10, upper_pct: int = 90,
+    anchor_offset_pct: float = 5.0,
+) -> PhysicalDensity:
 
     R_grid = np.asarray(R_grid, dtype=float)
 
@@ -114,16 +130,21 @@ def estimate_physical_density_almeida_from_returns(R_data: np.ndarray, R_grid: n
     counts, bin_edges = np.histogram(R_data, bins=n_bins, density=True)
     bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
 
-    # Step 2: polynomial smoothing on body region
+    # Step 2: polynomial smoothing (v5: unified splice-anchored fit).
     u_L = float(np.percentile(R_data, lower_pct))
     u_R = float(np.percentile(R_data, upper_pct))
-    body_mask = (bin_centers >= u_L) & (bin_centers <= u_R)
+    body_mask = (bin_centers >= u_L) & (bin_centers <= u_R)  # diagnostics
 
-    if body_mask.sum() > poly_order:
-        coeffs = np.polyfit(bin_centers[body_mask], counts[body_mask], poly_order)
-    else:
-        coeffs = np.polyfit(bin_centers, counts,
-                            min(poly_order, len(bin_centers) - 1))
+    hist_uL = _empirical_pdf_at(u_L, R_data, n_bins)
+    hist_uR = _empirical_pdf_at(u_R, R_data, n_bins)
+    ANCHOR_W = 5.0
+
+    x_fit = np.concatenate([[u_L], bin_centers, [u_R]])
+    y_fit = np.concatenate([[hist_uL], counts, [hist_uR]])
+    w_fit = np.concatenate([[ANCHOR_W], np.ones(len(bin_centers)), [ANCHOR_W]])
+    order = np.argsort(x_fit)
+    deg = min(poly_order, len(x_fit) - 1)
+    coeffs = np.polyfit(x_fit[order], y_fit[order], deg, w=w_fit[order])
     poly_fn = np.poly1d(coeffs)
 
     p_R = np.zeros_like(R_grid, dtype=float)
@@ -227,16 +248,21 @@ def estimate_physical_density_almeida_from_returns(R_data: np.ndarray, R_grid: n
                            n_returns=len(R_data), bandwidth=None,
                            diagnostics=diagnostics)
 
-# Estimator 2: Gaussian KDE body + mass-preserving POT GPD tails
-def estimate_physical_density_kde(spot: np.ndarray, R_grid: np.ndarray, horizon: int = 27,
-    lower_pct: int = 10, upper_pct: int = 90) -> PhysicalDensity:
 
+# Estimator 2: Gaussian KDE body + mass-preserving POT GPD tails
+def estimate_physical_density_kde(
+    spot: np.ndarray, R_grid: np.ndarray, horizon: int = 27,
+    lower_pct: int = 10, upper_pct: int = 90,
+) -> PhysicalDensity:
     R_data = compute_overlapping_returns(spot, horizon)
     return estimate_physical_density_kde_from_returns(
         R_data, R_grid, lower_pct=lower_pct, upper_pct=upper_pct)
 
-def estimate_physical_density_kde_from_returns(R_data: np.ndarray, R_grid: np.ndarray,
-    lower_pct: int = 10, upper_pct: int = 90) -> PhysicalDensity:
+
+def estimate_physical_density_kde_from_returns(
+    R_data: np.ndarray, R_grid: np.ndarray,
+    lower_pct: int = 10, upper_pct: int = 90,
+) -> PhysicalDensity:
 
     R_grid = np.asarray(R_grid, dtype=float)
 
