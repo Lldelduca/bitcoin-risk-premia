@@ -20,9 +20,9 @@ from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from src.config import get_path, get_return_grid
 
-from src.pricing_kernel.conditional_kernel import (estimate_conditional_kernel, coefficients_at)
-from src.inference.bootstrap_inference import circular_block_indices
-from src.pricing_kernel.run_phase3 import (load_daily_rnds_from_parquet, load_conditioning_spec, align_rnds_and_Z,
+from src.phase3.conditional_kernel import (estimate_conditional_kernel, coefficients_at)
+from src.phase3.bootstrap_inference import circular_block_indices
+from src.phase3.run_phase3 import (load_daily_rnds_from_parquet, load_conditioning_spec, align_rnds_and_Z,
     load_volatility_tercile_labels, PHASE2_DIR, PHASE3_DIR, TAB_DIR, SPECS)
 
 R_GRID = get_return_grid()

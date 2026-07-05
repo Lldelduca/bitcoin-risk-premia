@@ -12,13 +12,13 @@ from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from src.config import get_path, SAMPLE, get_return_grid
 
-from src.pricing_kernel.conditional_kernel import (
+from src.phase3.conditional_kernel import (
     estimate_conditional_kernel,
     evaluate_kernel_at_terciles,
     get_coefficient_timeseries,
 )
 
-from src.inference.bootstrap_inference import block_bootstrap_mean_bands
+from src.phase3.bootstrap_inference import block_bootstrap_mean_bands
 
 CLEAN_DIR = Path(get_path("cleaned_cme")).parent
 SURFACES_DIR = CLEAN_DIR.parent / "surfaces"

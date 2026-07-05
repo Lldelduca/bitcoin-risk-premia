@@ -14,7 +14,7 @@ import pandas as pd
 from scipy.integrate import trapezoid
 from typing import Dict, List
 import statsmodels.api as sm
-from src.inference.bootstrap_inference import (
+from src.phase3.bootstrap_inference import (
     block_bootstrap_mean_bands, block_bootstrap_group_mean_bands,
     circular_block_indices,
 )

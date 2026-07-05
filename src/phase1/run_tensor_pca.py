@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from src.config import get_path, SAMPLE, TENSOR_GRID
-from src.compression.tensor_pca import (build_ivs_tensor, standardize_tensor, cp_als, select_rank)
+from src.phase1.tensor_pca import (build_ivs_tensor, standardize_tensor, cp_als, select_rank)
 
 SAMPLE_START = SAMPLE["start_date"]
 SAMPLE_END = SAMPLE["end_date"]

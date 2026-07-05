@@ -12,7 +12,7 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 from src.config import get_path, SAMPLE, SSVI_CONFIG
-from src.surfaces.ssvi import SSVI
+from src.phase1.ssvi import SSVI
 
 
 SAMPLE_START = SAMPLE['start_date']

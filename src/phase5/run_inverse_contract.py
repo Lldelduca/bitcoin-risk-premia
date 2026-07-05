@@ -11,8 +11,8 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 
 from src.config import get_path, get_return_grid, SAMPLE
-from src.cross_venue.inverse_contract import (contributions_from_density, tilt_to_inverse_measure, predict_inverse_wedge)
-from src.inference.bootstrap_inference import block_bootstrap_statistic
+from src.phase5.inverse_contract import (contributions_from_density, tilt_to_inverse_measure, predict_inverse_wedge)
+from src.phase3.bootstrap_inference import block_bootstrap_statistic
 
 SURFACES_DIR = Path(get_path("cleaned_cme")).parent.parent / "surfaces"
 COND_DIR = Path(get_path("cleaned_cme")).parent.parent / "conditioning"

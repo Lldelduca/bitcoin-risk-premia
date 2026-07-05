@@ -11,7 +11,7 @@ import pandas as pd
 from pathlib import Path
 from typing import Tuple, Optional
 from src.config import get_path, SAMPLE, TENSOR_GRID
-from src.surfaces.ssvi import SSVI
+from src.phase1.ssvi import SSVI
 
 def build_ivs_tensor(params_df: pd.DataFrame, cleaned_dfs: dict = None, t_grid_days: list = None, k_grid: np.ndarray = None,
                      venues: list = ["CME", "DER"],) -> Tuple[np.ndarray, dict]:

@@ -8,7 +8,7 @@ Usage:
     python main.py                    # full pipeline, all phases
     python main.py --from 4           # resume from Phase 4 onward
     python main.py --only 1b 4        # run only Phase 1b and Phase 4
-    python main.py --skip-bootstrap   # skip the heavy Phase 3 bootstrap
+    python main.py --skip-bootstrap   # skip the heavy Phase 3b bootstrap
     python main.py --bootstrap-B 200  # set bootstrap replicates (default 200)
     python main.py --bootstrap-workers 4  # parallel workers (default 6)
 
@@ -16,12 +16,12 @@ Phase dependency graph:
     1a  SSVI surface fitting          (reads: cleaned options)
     1b  RND extraction                (reads: ssvi_params.parquet)
     1c  CP tensor decomposition       (reads: ssvi_params.parquet)
-    2   Conditioning vectors          (reads: CP factors, auxiliary panel)
-    3   Physical density + EP decomp  (reads: RNDs, spot prices)
-    4   Conditional pricing kernel    (reads: RNDs, physical density, Z vectors)
-    4b  Phase 3 bootstrap [optional]  (reads: Phase 4 theta, RNDs, Z vectors)
-    5   BKM / CL20 decomposition      (reads: ssvi_params.parquet, Z vectors)
-    6   Cross-venue analysis          (reads: RNDs, cumulant premia, Z vectors)
+    1d  Conditioning vectors          (reads: CP factors, auxiliary panel)
+    2   Physical density + EP decomp  (reads: RNDs, spot prices)
+    3   Conditional pricing kernel    (reads: RNDs, physical density, Z vectors)
+    3b  Phase 3 bootstrap [optional]  (reads: Phase 3 theta, RNDs, Z vectors)
+    4   BKM / CL20 decomposition      (reads: ssvi_params.parquet, Z vectors)
+    5   Cross-venue analysis          (reads: RNDs, cumulant premia, Z vectors)
 """
 
 import argparse
@@ -107,7 +107,7 @@ def phase_1a_surfaces():
     """Fit SSVI surfaces for both venues; saves ssvi_params.parquet."""
     import sys
     sys.path.insert(0, str(Path.cwd()))
-    from src.surfaces.fit_surfaces import fit_all_venues
+    from src.phase1.fit_surfaces import fit_all_venues
     fit_all_venues()
 
     from src.config import get_path
@@ -130,7 +130,7 @@ def phase_1b_densities():
     """Extract RNDs from saved surfaces; saves rnd_*.parquet."""
     import sys
     sys.path.insert(0, str(Path.cwd()))
-    from src.surfaces.extract_densities import extract_all_densities
+    from src.phase1.extract_densities import extract_all_densities
     extract_all_densities()
 
     from src.config import get_path
@@ -143,7 +143,7 @@ def phase_1c_tensor():
     """CP tensor decomposition on both maturity grids with sign convention."""
     import sys
     sys.path.insert(0, str(Path.cwd()))
-    from src.compression.run_tensor_pca import run_tensor_decomposition
+    from src.phase1.run_tensor_pca import run_tensor_decomposition
     for grid in ["almeida", "broad"]:
         print(f"\n{'#' * 60}")
         print(f"# Grid: {grid}")
@@ -159,7 +159,7 @@ def phase_2_conditioning():
     """Build conditioning vectors (Z_crypto, Z_macro, Z_full)."""
     import sys
     sys.path.insert(0, str(Path.cwd()))
-    from src.conditioning.build_conditioning_vectors import build_conditioning_vectors
+    from src.phase1.build_conditioning_vectors import build_conditioning_vectors
     build_conditioning_vectors()
 
     from src.config import get_path
@@ -177,7 +177,7 @@ def phase_3_ep(spot_data=None):
     """Physical density estimation and equity premium decomposition."""
     import sys
     sys.path.insert(0, str(Path.cwd()))
-    from src.ep_decomposition.run_phase2 import run_phase2
+    from src.phase2.run_phase2 import run_phase2
     run_phase2()
 
     phase2_dir = Path("results") / "phase2" / "tables"
@@ -198,7 +198,7 @@ def phase_4_kernel():
     """Conditional pricing kernel estimation (new (b,c,d) parameterization)."""
     import sys
     sys.path.insert(0, str(Path.cwd()))
-    from src.pricing_kernel.run_phase3 import run_phase3
+    from src.phase3.run_phase3 import run_phase3
     run_phase3()
 
     from src.config import get_path
@@ -225,7 +225,7 @@ def phase_4_kernel_bootstrap(B=200, workers=6):
     Heavy job — runs after Phase 4 kernel estimation."""
     import sys
     sys.path.insert(0, str(Path.cwd()))
-    from src.inference.run_phase3_bootstrap import run_bootstrap
+    from src.phase3.run_phase3_bootstrap import run_bootstrap
     run_bootstrap(venues=["CME", "DER"], spec_name="crypto", B=B, workers=workers)
 
     tab_dir = Path("results") / "phase3" / "tables"
@@ -244,7 +244,7 @@ def phase_5_bkm():
     """BKM moment extraction and CL20/CL24 cumulant decomposition."""
     import sys
     sys.path.insert(0, str(Path.cwd()))
-    from src.moment_decomposition.run_phase4 import run_phase4
+    from src.phase4.run_phase4 import run_phase4
     run_phase4()
 
     phase4_dir = Path("results") / "phase4" / "tables"
@@ -275,7 +275,7 @@ def phase_6_cross_venue():
     """Cross-venue MFK, panel regressions, regional decomposition."""
     import sys
     sys.path.insert(0, str(Path.cwd()))
-    from src.cross_venue.run_phase5 import run_phase5
+    from src.phase5.run_phase5 import run_phase5
     run_phase5()
 
     tab_dir = Path("results") / "phase5" / "tables"

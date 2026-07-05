@@ -12,10 +12,10 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 from src.config import get_path, SAMPLE, get_return_grid
 
-from src.ep_decomposition.physical_density import (estimate_physical_density_almeida, estimate_physical_density_kde,
+from src.phase2.physical_density import (estimate_physical_density_almeida, estimate_physical_density_kde,
 estimate_physical_density_almeida_from_returns, estimate_physical_density_kde_from_returns,compute_overlapping_returns)
-from src.ep_decomposition.ep_decomposition import (compute_ep_decomposition, compute_ep_contributions)
-from src.inference.bootstrap_inference import block_bootstrap_statistic
+from src.phase2.ep_decomposition import (compute_ep_decomposition, compute_ep_contributions)
+from src.phase3.bootstrap_inference import block_bootstrap_statistic
 
 CLEAN_DIR = Path(get_path("cleaned_cme")).parent
 SURFACES_DIR = CLEAN_DIR.parent / "surfaces"

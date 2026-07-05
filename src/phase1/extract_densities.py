@@ -11,8 +11,8 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 from src.config import get_path, SAMPLE
-from src.surfaces.ssvi import SSVI
-from src.surfaces.breeden_litzenberger import (extract_rnd_with_gpd_tails, validate_rnd)
+from src.phase1.ssvi import SSVI
+from src.phase1.breeden_litzenberger import (extract_rnd_with_gpd_tails, validate_rnd)
 
 SAMPLE_START = SAMPLE['start_date']
 SAMPLE_END = SAMPLE['end_date']
