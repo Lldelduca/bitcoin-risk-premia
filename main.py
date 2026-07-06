@@ -178,7 +178,7 @@ def phase_1c_tensor():
 
     data_dir = get_path('data_phase1')
     results_dir = get_path('results_phase1')
-    _check_file(results_dir / "tensor_pca_diagnostics_almeida.csv", "Almeida diagnostics")
+    _check_file(data_dir / "tensor_pca_diagnostics_almeida.csv", "Almeida diagnostics")
     _check_file(data_dir / "tensor_pca_state_almeida.parquet", "Z_IVS state vector")
 
 def phase_1d_conditioning():

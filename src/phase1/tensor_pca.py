@@ -9,9 +9,15 @@ alternating least squares to recover a low-dimensional state vector capturing sy
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from typing import Tuple, Optional
-from src.config import get_path, SAMPLE, TENSOR_GRID
+from typing import Tuple
+from src.config import get_path, get_sample_window, get_tensor_grid
 from src.phase1.ssvi import SSVI
+
+DATA_DIR = get_path("data_phase1")
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+SAMPLE_START, SAMPLE_END = get_sample_window()
+TENSOR_CONFIG = get_tensor_grid()
 
 def build_ivs_tensor(params_df: pd.DataFrame, cleaned_dfs: dict = None, t_grid_days: list = None, k_grid: np.ndarray = None,
                      venues: list = ["CME", "DER"],) -> Tuple[np.ndarray, dict]:
