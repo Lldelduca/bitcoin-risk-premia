@@ -33,9 +33,8 @@ try:
 except (ImportError, AttributeError):
     _FRED_KEY = None
 
-CLEAN_DIR = Path(get_path("cleaned_cme")).parent
-PANEL_PATH = CLEAN_DIR / "auxiliary_panel.parquet"
-COVERAGE_PATH = CLEAN_DIR / "auxiliary_panel_coverage.csv"
+PANEL_PATH = get_path("cleaned_auxiliary")
+COVERAGE_PATH = PANEL_PATH.with_name("auxiliary_panel_coverage.csv")
 
 FRED_SERIES = {
     "baa_spread": "BAA10Y",
@@ -235,6 +234,7 @@ def build_auxiliary_panel() -> pd.DataFrame:
               f"{first.date() if pd.notna(first) else 'N/A'} -> "
               f"{last.date() if pd.notna(last) else 'N/A'}")
 
+    PANEL_PATH.parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(summary_rows).to_csv(COVERAGE_PATH, index=False)
     print(f"\n  Saved coverage: {COVERAGE_PATH}")
 

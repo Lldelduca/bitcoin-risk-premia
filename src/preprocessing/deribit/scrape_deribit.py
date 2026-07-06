@@ -1,4 +1,3 @@
-# src/preprocessing/scrape_deribit.py
 """
 Deribit Historical BTC Options Trade Scraper (memory-safe version).
 
@@ -21,7 +20,7 @@ RESUMABILITY:
   - Run multiple times if interrupted; nothing is lost
 
 Usage:
-  python -m src.preprocessing.scrape_deribit
+  python -m src.preprocessing.deribit.scrape_deribit
 
 Output:
   data/raw/deribit/shards/btc_trades_shard_NNNN.parquet  (incremental raw)
@@ -148,7 +147,7 @@ def scrape_all_trades():
     print("  Deribit Historical BTC Options Trade Scraper")
     print("=" * 60)
 
-    out_dir = Path(get_path('raw_deribit_dir'))
+    out_dir = get_path('raw_deribit_dir')
     shards_dir = out_dir / "shards"
     shards_dir.mkdir(parents=True, exist_ok=True)
 

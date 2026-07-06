@@ -142,7 +142,8 @@ def process_funding_differential():
         end_date=DER_FUNDING_END,
     )
 
-    der_out = get_path("cleaned_auxiliary").parent / "funding_deribit.parquet"
+    der_out = get_path("funding_deribit")
+    der_out.parent.mkdir(parents=True, exist_ok=True)
     der.to_parquet(der_out, index=False)
     print(f"  Saved standalone Deribit perpetual funding to {der_out}")
     print(f"  ({der['date'].min().date()} -> {der['date'].max().date()}, "
@@ -163,7 +164,7 @@ def process_funding_differential():
     df = pd.merge(hl, der, on="date", how="inner")
     df["delta_f_hl_der"] = df["funding_hl_annual"] - df["funding_der_annual"]
 
-    out_path = get_path("cleaned_auxiliary").parent / "funding_diff.parquet"
+    out_path = get_path("funding_diff")
     df.to_parquet(out_path, index=False)
 
     print(f"\n  Saved differential to {out_path}")
@@ -176,4 +177,3 @@ def process_funding_differential():
 
 if __name__ == "__main__":
     process_funding_differential()
-    

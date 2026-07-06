@@ -1,8 +1,8 @@
 import sys
 import pandas as pd
 import numpy as np
-from src.config import get_path, FILTERS_CME
-from src.preprocessing import filters
+from src.config import get_path, get_filters
+from src.preprocessing.core import filters
 
 def convert_csv_to_parquet():
     csv_path = get_path('raw_cme_csv')
@@ -40,6 +40,9 @@ def process_cme_data():
     print("\n" + "="*60)
     print("  CME Bitcoin Options Cleaning Pipeline")
     print("="*60)
+
+    filters_shared = get_filters("shared")
+    filters_cme = get_filters("cme")
 
     # Step 0: CSV → Parquet
     convert_csv_to_parquet()
@@ -83,7 +86,7 @@ def process_cme_data():
     print(f"  {'Raw data':<40} {len(df):>10,}")
 
     n_before = len(df)
-    df = filters.remove_ivydb_sentinels(df, sentinel=FILTERS_CME['ivydb_sentinel'])
+    df = filters.remove_ivydb_sentinels(df, sentinel=filters_cme['ivydb_sentinel'])
     print(f"  {'Remove IvyDB sentinels':<40} {len(df):>10,} {n_before - len(df):>10,}")
 
     # Step 4: Compute forward via put-call parity
@@ -93,23 +96,23 @@ def process_cme_data():
     steps = [
         ("Maturity filter", lambda d: filters.filter_maturity(
             d,
-            min_dte=FILTERS_CME['min_tau_days'],
-            max_dte=FILTERS_CME['max_tau_days']
+            min_dte=filters_shared['min_tau_days'],
+            max_dte=filters_shared['max_tau_days']
         )),
         ("Static no-arbitrage bounds", filters.filter_static_arbitrage),
         ("Liquidity (OI≥1 or Vol≥1)", lambda d: filters.filter_liquidity(
             d,
-            min_oi=FILTERS_CME['min_open_interest'],
-            min_vol=FILTERS_CME['min_volume']
+            min_oi=filters_cme['min_open_interest'],
+            min_vol=filters_cme['min_volume']
         )),
         ("OTM only (K≥F calls, K≤F puts)", filters.filter_out_of_the_money),
         ("Moneyness trim |κ| ≤ 3√τ", lambda d: filters.trim_extreme_moneyness(
-            d, coeff=FILTERS_CME['moneyness_trim']
+            d, coeff=filters_shared['moneyness_trim']
         )),
         ("IV bounds", lambda d: filters.filter_iv_bounds(
             d,
-            min_iv=FILTERS_CME['min_iv'],
-            max_iv=FILTERS_CME['max_iv']
+            min_iv=filters_shared['min_iv'],
+            max_iv=filters_shared['max_iv']
         )),
     ]
 

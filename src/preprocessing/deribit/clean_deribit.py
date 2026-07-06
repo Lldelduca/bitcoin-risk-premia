@@ -2,14 +2,14 @@ import sys
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from src.config import get_path, FILTERS_DERIBIT
-from src.preprocessing import filters
+from src.config import get_path, get_filters
+from src.preprocessing.core import filters
 
 def load_scraped_trades() -> pd.DataFrame:
     path = get_path('raw_deribit_dir') / "btc_options_trades.parquet"
     if not path.exists():
         print(f"\n  ERROR: Scraped trades not found at {path}")
-        print(f"  Run `python -m src.preprocessing.scrape_deribit` first.\n")
+        print(f"  Run `python -m src.preprocessing.deribit.scrape_deribit` first.\n")
         sys.exit(1)
     return pd.read_parquet(path)
 
@@ -145,6 +145,9 @@ def process_deribit_data():
     print("  Deribit Bitcoin Options Cleaning Pipeline")
     print("=" * 60)
 
+    filters_shared = get_filters("shared")
+    filters_deribit = get_filters("deribit")
+
     # Step 1: Load scraped trades
     print("\n  Loading scraped trades...")
     df = load_scraped_trades()
@@ -164,7 +167,7 @@ def process_deribit_data():
 
     # Filter 2: Remove zero-quantity transactions
     n_before = len(df)
-    df = df[df['amount'] > FILTERS_DERIBIT['min_amount']]
+    df = df[df['amount'] > filters_deribit['min_amount']]
     print(f"  {'Remove zero-quantity trades':<40} {len(df):>12,} {n_before - len(df):>12,}")
 
     # Filter 3: Remove non-positive prices (basic no-arbitrage)
@@ -178,7 +181,7 @@ def process_deribit_data():
     print(f"  {'Daily cross-section rows':<40} {len(df):>12,}")
 
     # Drop slices with too few trades
-    min_trades = FILTERS_DERIBIT['min_n_trades_per_slice']
+    min_trades = filters_deribit['min_n_trades_per_slice']
     if min_trades > 1:
         n_before = len(df)
         df = df[df['n_trades'] >= min_trades]
@@ -193,17 +196,17 @@ def process_deribit_data():
     steps = [
         ("Maturity filter", lambda d: filters.filter_maturity(
             d,
-            min_dte=FILTERS_DERIBIT['min_tau_days'],
-            max_dte=FILTERS_DERIBIT['max_tau_days']
+            min_dte=filters_shared['min_tau_days'],
+            max_dte=filters_shared['max_tau_days']
         )),
         ("OTM only (K≥F calls, K≤F puts)", filters.filter_out_of_the_money),
         ("Moneyness trim |κ| ≤ 3√τ", lambda d: filters.trim_extreme_moneyness(
-            d, coeff=FILTERS_DERIBIT['moneyness_trim']
+            d, coeff=filters_shared['moneyness_trim']
         )),
         ("IV bounds", lambda d: filters.filter_iv_bounds(
             d,
-            min_iv=FILTERS_DERIBIT['min_iv'],
-            max_iv=FILTERS_DERIBIT['max_iv']
+            min_iv=filters_shared['min_iv'],
+            max_iv=filters_shared['max_iv']
         )),
     ]
 
@@ -251,17 +254,7 @@ def process_deribit_data():
     print(f"    Max:    {daily.max()}")
     print(f"    Mean:   {daily.mean():.1f}")
 
-    # Slice density (relevant for SSVI fitting)
-    per_slice = df.groupby(['date', 'expiration']).size().reset_index(name='n_options')
-    print(f"\n  Options per (date, expiration) slice:")
-    print(f"    Median: {per_slice['n_options'].median():.0f}")
-    print(f"    Min:    {per_slice['n_options'].min()}")
-    print(f"    Max:    {per_slice['n_options'].max()}")
-    print(f"    Slices with < 4 options: "
-          f"{(per_slice['n_options'] < 4).sum():,} "
-          f"({(per_slice['n_options'] < 4).mean():.1%})")
-
-    # Export daily Deribit basis for friction-proxy analysis
+    # Export daily Deribit basis using direct path
     daily_basis = df.groupby('date').agg(
         deribit_basis_mean=('deribit_basis', 'mean'),
         deribit_basis_median=('deribit_basis', 'median'),
@@ -269,7 +262,7 @@ def process_deribit_data():
         forward_price_mean=('forward_price', 'mean'),
         n_slices=('expiration', 'nunique'),
     ).reset_index()
-    basis_path = out_path.parent / "deribit_daily_basis.parquet"
+    basis_path = get_path('deribit_daily_basis')
     daily_basis.to_parquet(basis_path, index=False)
     print(f"\n  Deribit daily basis saved to: {basis_path}")
     print(f"  ({len(daily_basis):,} days, "

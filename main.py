@@ -6,13 +6,15 @@ Designed to be kicked off once and left to run; each phase prints a clear banner
 
 Usage:
     python main.py                    # full pipeline, all phases
-    python main.py --from 4           # resume from Phase 4 onward
-    python main.py --only 1b 4        # run only Phase 1b and Phase 4
+    python main.py --from 1a          # resume from Phase 1a onward
+    python main.py --only 0b 4        # run only Phase 0b and Phase 4
     python main.py --skip-bootstrap   # skip the heavy Phase 3b bootstrap
     python main.py --bootstrap-B 200  # set bootstrap replicates (default 200)
     python main.py --bootstrap-workers 4  # parallel workers (default 6)
 
 Phase dependency graph:
+    0a  Data Scraping (Deribit)       (reads: Deribit API)
+    0b  Data Cleaning & Auxiliary     (reads: raw CME/Deribit, FRED/yfinance APIs)
     1a  SSVI surface fitting          (reads: cleaned options)
     1b  RND extraction                (reads: ssvi_params.parquet)
     1c  CP tensor decomposition       (reads: ssvi_params.parquet)
@@ -102,7 +104,39 @@ def _check_parquet_rows(path, label="", min_rows=1):
     print(f"  [checkpoint] {label}: {n:,} rows")
     return n
 
-# Phase runners (each imports at call time to avoid import-order issues)
+# Phase runners
+def phase_0a_scraping():
+    """Scrape raw historical trades from Deribit API."""
+    import sys
+    sys.path.insert(0, str(Path.cwd()))
+    from src.preprocessing.deribit.scrape_deribit import scrape_all_trades
+    
+    scrape_all_trades()
+
+    from src.config import get_path
+    _check_parquet_rows(get_path("raw_deribit_dir") / "btc_options_trades.parquet", 
+                        "Deribit raw trades", min_rows=1000)
+
+def phase_0b_preprocessing():
+    """Clean CME/Deribit data, build auxiliary panel, and compute funding diffs."""
+    import sys
+    sys.path.insert(0, str(Path.cwd()))
+    from src.preprocessing.cme.clean_cme import process_cme_data
+    from src.preprocessing.deribit.clean_deribit import process_deribit_data
+    from src.preprocessing.auxiliary.auxiliary import build_auxiliary_panel
+    from src.preprocessing.auxiliary.funding_diff import process_funding_differential
+    
+    process_cme_data()
+    process_deribit_data()
+    build_auxiliary_panel()
+    process_funding_differential()
+
+    from src.config import get_path
+    _check_parquet_rows(get_path("cleaned_cme"), "CME cleaned", min_rows=1000)
+    _check_parquet_rows(get_path("cleaned_deribit"), "Deribit cleaned", min_rows=1000)
+    _check_parquet_rows(get_path("cleaned_auxiliary"), "Auxiliary panel", min_rows=100)
+    _check_parquet_rows(get_path("funding_diff"), "Funding differential", min_rows=100)
+
 def phase_1a_surfaces():
     """Fit SSVI surfaces for both venues; saves ssvi_params.parquet."""
     import sys
@@ -299,7 +333,9 @@ def phase_5_cross_venue():
 
 # Orchestrator
 PHASE_ORDER = [
-    ("1a", "SSVI Surface Fitting",            phase_1a_surfaces),
+    ("0a", "Data Scraping (Deribit)",          phase_0a_scraping),
+    ("0b", "Data Cleaning & Auxiliary",        phase_0b_preprocessing),
+    ("1a", "SSVI Surface Fitting",             phase_1a_surfaces),
     ("1b", "RND Extraction (Figlewski tails)", phase_1b_densities),
     ("1c", "CP Tensor Decomposition",          phase_1c_tensor),
     ("1d", "Conditioning Vectors",             phase_1d_conditioning),
@@ -319,11 +355,10 @@ def main():
         epilog="""
 Examples:
   python main.py                        # full pipeline
-  python main.py --from 2               # resume from Phase 2 (EP)
-  python main.py --only 4 5             # run only Phases 4 and 5
+  python main.py --from 1a              # resume from Phase 1a
+  python main.py --only 0b 4            # run only Phases 0b and 4
   python main.py --skip-bootstrap       # skip the heavy kernel bootstrap
-  python main.py --bootstrap-B 50       # quick bootstrap (50 replicates)
-  python main.py --skip 1a 1b 1c        # skip surface fitting & RNDs
+  python main.py --skip 0a              # skip the long API scraping step
         """,
     )
     parser.add_argument("--from", dest="from_phase", default=None,
