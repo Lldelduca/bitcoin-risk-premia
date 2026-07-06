@@ -10,19 +10,23 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from pathlib import Path
-from src.config import get_path, SAMPLE, get_return_grid
+from src.config import get_path, get_sample_window, get_return_grid
 
 from src.phase2.physical_density import (estimate_physical_density_almeida, estimate_physical_density_kde,
-estimate_physical_density_almeida_from_returns, estimate_physical_density_kde_from_returns,compute_overlapping_returns)
+estimate_physical_density_almeida_from_returns, estimate_physical_density_kde_from_returns, compute_overlapping_returns)
 from src.phase2.ep_decomposition import (compute_ep_decomposition, compute_ep_contributions)
 from src.phase3.bootstrap_inference import block_bootstrap_statistic
 
-CLEAN_DIR = Path(get_path("cleaned_cme")).parent
-SURFACES_DIR = CLEAN_DIR.parent / "surfaces"
-PHASE2_DIR = CLEAN_DIR.parent / "phase2"
-FIG_DIR = Path("results") / "phase2" / "figures"
-TAB_DIR = Path("results") / "phase2" / "tables"
-for d in [PHASE2_DIR, FIG_DIR, TAB_DIR]:
+CLEAN_DIR = Path(get_path("cleaned_dir"))
+DATA_P1 = get_path("data_phase1")
+DATA_P2 = get_path("data_phase2")
+RES_P2 = get_path("results_phase2")
+
+DATA_P2.mkdir(parents=True, exist_ok=True)
+RES_P2.mkdir(parents=True, exist_ok=True)
+FIG_DIR = RES_P2 / "figures"
+TAB_DIR = RES_P2 / "tables"
+for d in [FIG_DIR, TAB_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 R_GRID = get_return_grid()  
@@ -30,26 +34,27 @@ EP_BOOT_B = 500
 EP_BOOT_BLOCK = 54
 EP_BOOT_SEED = 42
 
+SAMPLE_START, SAMPLE_END = get_sample_window()
+
 plt.rcParams["figure.figsize"] = (12, 5)
 plt.rcParams["axes.grid"] = True
 plt.rcParams["grid.alpha"] = 0.3
 plt.rcParams["font.size"] = 11
 
 def load_spot_prices():
-    panel = pd.read_parquet(CLEAN_DIR / "auxiliary_panel.parquet")
+    panel = pd.read_parquet(get_path("cleaned_auxiliary"))
     panel["date"] = pd.to_datetime(panel["date"])
     panel = panel.sort_values("date").dropna(subset=["btc_spot"])
-
-    # Restrict P-measure inputs to the sample window
-    mask = ((panel["date"] >= pd.to_datetime(SAMPLE["start_date"]))
-            & (panel["date"] <= pd.to_datetime(SAMPLE["end_date"])))
+    
+    start_date = pd.to_datetime(SAMPLE_START)
+    end_date = pd.to_datetime(SAMPLE_END)
+    
+    mask = (panel["date"] >= start_date) & (panel["date"] <= end_date)
     panel = panel.loc[mask]
-    print(f"  Spot window: {panel['date'].iloc[0].date()} -> "
-          f"{panel['date'].iloc[-1].date()} ({len(panel)} days)")
     return panel["btc_spot"].values
 
 def load_daily_rnds_from_parquet(venue, tau_days=27):
-    density_path = SURFACES_DIR / f"rnd_{venue}_densities.parquet"
+    density_path = DATA_P1 / f"rnd_{venue}_densities.parquet"
     df = pd.read_parquet(density_path)
     df["date"] = pd.to_datetime(df["date"])
 
@@ -70,7 +75,7 @@ def load_daily_rnds_from_parquet(venue, tau_days=27):
         dates.append(row["date"])
         rnds.append(q_interp)
 
-    print(f"  [{venue}] Loaded {len(rnds)} daily RNDs at tau={tau_days}d from parquet")
+    print(f"  [{venue}] Loaded {len(rnds)} daily RNDs from {density_path.name}")
     return dates, rnds
 
 def compute_average_rnd(rnds):
@@ -228,7 +233,7 @@ def run_phase2():
     print(f"  Saved: {TAB_DIR / 'ep_bootstrap_ci.csv'}")
 
     np.savez(
-        PHASE2_DIR / "phase2_densities.npz",
+        DATA_P2 / "phase2_densities.npz",
         R_grid=R_GRID,
         p_almeida=p_almeida.p_R,
         p_kde=p_kde.p_R,

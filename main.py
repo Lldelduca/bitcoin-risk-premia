@@ -203,12 +203,12 @@ def phase_2_ep(spot_data=None):
     from src.phase2.run_phase2 import run_phase2
     run_phase2()
 
-    phase2_dir = Path("results") / "phase2" / "tables"
-    _check_file(phase2_dir / "ep_decomposition_summary.csv", "EP summary")
-    _check_file(phase2_dir / "ep_bootstrap_ci.csv", "EP bootstrap CIs")
+    results_dir = get_path("results_phase2") / "tables"
+    _check_file(results_dir / "ep_decomposition_summary.csv", "EP summary")
+    _check_file(results_dir / "ep_bootstrap_ci.csv", "EP bootstrap CIs")
 
     # Headline check: raw-moment anchor should be in the table
-    boot = pd.read_csv(phase2_dir / "ep_bootstrap_ci.csv")
+    boot = pd.read_csv(results_dir / "ep_bootstrap_ci.csv")
     raw = boot[boot["estimator"] == "raw_moment"]
     if len(raw) == 0:
         print("  [WARN] No raw_moment row in ep_bootstrap_ci.csv")

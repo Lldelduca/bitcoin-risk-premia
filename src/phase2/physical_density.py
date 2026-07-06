@@ -31,10 +31,7 @@ def compute_overlapping_returns(spot: np.ndarray, horizon: int = 27) -> np.ndarr
     R = spot[horizon:] / spot[:-horizon]
     return R[np.isfinite(R) & (R > 0)]
 
-
 def _empirical_pdf_at(x: float, R_data: np.ndarray, n_bins: int) -> float:
-    """Empirical density at x from the histogram used for the body; falls
-    back to a Gaussian KDE evaluation if the anchor bin is empty."""
     counts, edges = np.histogram(R_data, bins=n_bins, density=True)
     idx = int(np.clip(np.searchsorted(edges, x, side="right") - 1, 0, n_bins - 1))
     val = float(counts[idx])
@@ -43,7 +40,6 @@ def _empirical_pdf_at(x: float, R_data: np.ndarray, n_bins: int) -> float:
     return val
 
 def _splice_pdf_target(poly_fn, x: float, R_data: np.ndarray, n_bins: int):
-
     poly_at = float(poly_fn(x))
     hist_at = _empirical_pdf_at(x, R_data, n_bins)
     if poly_at > 0.0 and poly_at >= 0.5 * hist_at:
@@ -56,7 +52,6 @@ def _splice_pdf_target(poly_fn, x: float, R_data: np.ndarray, n_bins: int):
 
 
 def _fit_gpd_tail(excesses: np.ndarray):
-    """MLE GPD fit to threshold excesses (correct for the POT splice)."""
     shape, _, scale = stats.genpareto.fit(excesses, floc=0)
     return shape, scale
 
@@ -65,9 +60,13 @@ def _fit_gev_point_matching(
     x1: float, F1_target: float, f1_target: float,
     x2: float, f2_target: float,
     init_loc: float, init_scale: float,
+    x_support: float,
     w_cdf: float = 10.0,
+    w_f2: float = 1.0 / np.sqrt(10.0),
+    w_sup: float = 10.0,
 ):
-    mono_grid = x1 + np.linspace(0.0, 6.0, 60) * max(x2 - x1, 1e-3)
+
+    mono_grid = x1 + np.linspace(0.0, 8.0, 80) * max(init_scale, 0.05)
 
     def residuals(params):
         c, loc, log_scale = params
@@ -78,7 +77,12 @@ def _fit_gev_point_matching(
             rf2 = stats.genextreme.pdf(x2, c, loc=loc, scale=scale) - f2_target
             pdf_tail = stats.genextreme.pdf(mono_grid, c, loc=loc, scale=scale)
             r_mono = 10.0 * float(np.sum(np.clip(np.diff(pdf_tail), 0.0, None)))
-        out = np.array([w_cdf * rF, rf1, rf2, r_mono])
+            if c > 1e-8:                   
+                endpoint = loc + scale / c
+                r_sup = w_sup * max(0.0, x_support - endpoint)
+            else:
+                r_sup = 0.0
+        out = np.array([w_cdf * rF, rf1, w_f2 * rf2, r_mono, r_sup])
         return np.where(np.isfinite(out), out, 1e3)
 
     best = None
@@ -121,7 +125,7 @@ def estimate_physical_density_almeida(
 def estimate_physical_density_almeida_from_returns(
     R_data: np.ndarray, R_grid: np.ndarray, n_bins: int = 12,
     poly_order: int = 10, lower_pct: int = 10, upper_pct: int = 90,
-    anchor_offset_pct: float = 5.0,
+    inner_delta: float = 0.01,
 ) -> PhysicalDensity:
 
     R_grid = np.asarray(R_grid, dtype=float)
@@ -130,10 +134,10 @@ def estimate_physical_density_almeida_from_returns(
     counts, bin_edges = np.histogram(R_data, bins=n_bins, density=True)
     bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
 
-    # Step 2: polynomial smoothing (v5: unified splice-anchored fit).
+    # Step 2: polynomial smoothing
     u_L = float(np.percentile(R_data, lower_pct))
     u_R = float(np.percentile(R_data, upper_pct))
-    body_mask = (bin_centers >= u_L) & (bin_centers <= u_R)  # diagnostics
+    body_mask = (bin_centers >= u_L) & (bin_centers <= u_R) 
 
     hist_uL = _empirical_pdf_at(u_L, R_data, n_bins)
     hist_uR = _empirical_pdf_at(u_R, R_data, n_bins)
@@ -151,16 +155,23 @@ def estimate_physical_density_almeida_from_returns(
     body_grid_mask = (R_grid >= u_L) & (R_grid <= u_R)
     p_R[body_grid_mask] = np.maximum(poly_fn(R_grid[body_grid_mask]), 0.0)
 
-    diagnostics = {"u_L": u_L, "u_R": u_R}
+    body_target_mass = (upper_pct - lower_pct) / 100.0
+    body_int = float(np.trapezoid(p_R[body_grid_mask], R_grid[body_grid_mask]))
+    body_scale = body_target_mass / body_int if body_int > 0 else 1.0
+    p_R[body_grid_mask] *= body_scale
 
-    # Step 3a: right tail -- GEV point-matched at (q90, q95)
-    x2_R = float(np.percentile(R_data, upper_pct + anchor_offset_pct))
-    f1_R, src_R = _splice_pdf_target(poly_fn, u_R, R_data, n_bins)
-    f2_R = max(_empirical_pdf_at(x2_R, R_data, n_bins), 1e-10)
+    diagnostics = {"u_L": u_L, "u_R": u_R, "body_scale": body_scale}
+
+    # Step 3a: right tail GEV point-matched
+    x2_R = u_R - inner_delta
+    f1_R_raw, src_R = _splice_pdf_target(poly_fn, u_R, R_data, n_bins)
+    f1_R = body_scale * f1_R_raw
+    f2_R = body_scale * max(float(poly_fn(x2_R)), 1e-10)
     c_R, loc_R, scale_R, info_R = _fit_gev_point_matching(
         x1=u_R, F1_target=upper_pct / 100.0, f1_target=f1_R,
         x2=x2_R, f2_target=f2_R,
-        init_loc=float(np.median(R_data)), init_scale=float(np.std(R_data)))
+        init_loc=float(np.median(R_data)), init_scale=float(np.std(R_data)),
+        x_support=float(np.max(R_data)))
     right_mask = R_grid > u_R
     p_R[right_mask] = stats.genextreme.pdf(
         R_grid[right_mask], c_R, loc=loc_R, scale=scale_R)
@@ -168,15 +179,17 @@ def estimate_physical_density_almeida_from_returns(
                                 "scale": scale_R,
                                 "f1_source": src_R, **info_R}
 
-    # Step 3b: left tail -- GEV on the mirrored variable Y = -R at (q10, q5)
+    # Step 3b: left tail GEV point-matched
     y1 = -u_L
-    y2 = -float(np.percentile(R_data, lower_pct - anchor_offset_pct))
-    f1_L, src_L = _splice_pdf_target(poly_fn, u_L, R_data, n_bins)
-    f2_L = max(_empirical_pdf_at(-y2, R_data, n_bins), 1e-10)
+    y2 = y1 - inner_delta  
+    f1_L_raw, src_L = _splice_pdf_target(poly_fn, u_L, R_data, n_bins)
+    f1_L = body_scale * f1_L_raw
+    f2_L = body_scale * max(float(poly_fn(u_L + inner_delta)), 1e-10)
     c_L, loc_L, scale_L, info_L = _fit_gev_point_matching(
         x1=y1, F1_target=1.0 - lower_pct / 100.0, f1_target=f1_L,
         x2=y2, f2_target=f2_L,
-        init_loc=float(np.median(-R_data)), init_scale=float(np.std(R_data)))
+        init_loc=float(np.median(-R_data)), init_scale=float(np.std(R_data)),
+        x_support=float(-np.min(R_data)))
     left_mask = R_grid < u_L
     p_R[left_mask] = stats.genextreme.pdf(
         -R_grid[left_mask], c_L, loc=loc_L, scale=scale_L)
@@ -184,6 +197,7 @@ def estimate_physical_density_almeida_from_returns(
                                "scale": scale_L,
                                "f1_source": src_L, **info_L}
 
+    # Guards: tails must be monotone away from the splice.
     def _interior_rise(tail_vals, edge_idx):
         if tail_vals.size <= 2 or tail_vals[edge_idx] <= 0:
             return 0.0
@@ -195,7 +209,7 @@ def estimate_physical_density_almeida_from_returns(
             x1=u_R, F1_target=upper_pct / 100.0, f1_target=f1_R,
             x2=x2_R, f2_target=f2_R,
             init_loc=float(np.median(R_data)), init_scale=float(np.std(R_data)),
-            w_cdf=50.0)
+            x_support=float(np.max(R_data)), w_cdf=50.0)
         p_R[right_mask] = stats.genextreme.pdf(
             R_grid[right_mask], c_R, loc=loc_R, scale=scale_R)
         diagnostics["gev_right"] = {"c_scipy": c_R, "loc": loc_R,
@@ -214,7 +228,7 @@ def estimate_physical_density_almeida_from_returns(
             x1=y1, F1_target=1.0 - lower_pct / 100.0, f1_target=f1_L,
             x2=y2, f2_target=f2_L,
             init_loc=float(np.median(-R_data)), init_scale=float(np.std(R_data)),
-            w_cdf=50.0)
+            x_support=float(-np.min(R_data)), w_cdf=50.0)
         p_R[left_mask] = stats.genextreme.pdf(
             -R_grid[left_mask], c_L, loc=loc_L, scale=scale_L)
         diagnostics["gev_left"] = {"c_scipy": c_L, "loc": loc_L,
