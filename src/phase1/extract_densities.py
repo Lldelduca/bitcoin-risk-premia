@@ -10,18 +10,17 @@ import time
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from src.config import get_path, SAMPLE
+from src.config import get_path, get_sample_window
 from src.phase1.ssvi import SSVI
 from src.phase1.breeden_litzenberger import (extract_rnd_with_gpd_tails, validate_rnd)
 
-SAMPLE_START = SAMPLE['start_date']
-SAMPLE_END = SAMPLE['end_date']
+SAMPLE_START, SAMPLE_END = get_sample_window()
 TARGET_MATURITIES_DAYS = [14, 27, 60]
 
 N_STRIKES = 500
 MIN_OPTIONS_PER_SLICE = 4
 
-SURFACES_DIR = Path(get_path('cleaned_cme')).parent.parent / "surfaces"
+DATA_DIR = get_path('data_phase1')
 
 def load_venue_data(venue: str) -> pd.DataFrame:
     if venue == "CME":
@@ -38,7 +37,7 @@ def load_venue_data(venue: str) -> pd.DataFrame:
 
 def load_ssvi_params() -> pd.DataFrame:
     """Loads the fitted SSVI parameters saved by fit_surfaces (Phase 1a)."""
-    params_path = SURFACES_DIR / "ssvi_params.parquet"
+    params_path = DATA_DIR / "ssvi_params.parquet"
     if not params_path.exists():
         raise FileNotFoundError(
             f"{params_path} not found. Run fit_surfaces first; densities are "
@@ -130,13 +129,10 @@ def extract_venue_densities(venue: str, df: pd.DataFrame, params: pd.DataFrame):
             elapsed = (time.time() - start_time) / 60
             rate = (idx + 1) / elapsed if elapsed > 0 else 0
             eta = (n_days - idx - 1) / rate if rate > 0 else 0
-            print(f"    [{venue}] Day {idx+1}/{n_days} | "
-                  f"RNDs: {len(results)} | "
-                  f"Elapsed: {elapsed:.1f}m | ETA: {eta:.1f}m")
+            print(f"    [{venue}] Day {idx+1}/{n_days} | RNDs: {len(results)} | Elapsed: {elapsed:.1f}m | ETA: {eta:.1f}m")
 
     elapsed = (time.time() - start_time) / 60
-    print(f"  [{venue}] Complete: {n_success} days, {len(results)} RNDs, "
-          f"{n_skip} skipped in {elapsed:.1f} min")
+    print(f"  [{venue}] Complete: {n_success} days, {len(results)} RNDs, {n_skip} skipped in {elapsed:.1f} min")
 
     return results
 
@@ -174,17 +170,15 @@ def save_rnd_results(results, venue):
 
     # Save scalar summary
     df_scalar = pd.DataFrame(scalar_rows)
-    scalar_path = SURFACES_DIR / f"rnd_{venue}_summary.parquet"
-    df_scalar.to_parquet(scalar_path, index=False)
+    df_scalar.to_parquet(DATA_DIR / f"rnd_{venue}_summary.parquet", index=False)
 
     # Save full densities
     df_density = pd.DataFrame(density_rows)
     df_density['date'] = pd.to_datetime(df_density['date'])
-    density_path = SURFACES_DIR / f"rnd_{venue}_densities.parquet"
-    df_density.to_parquet(density_path, index=False)
+    df_density.to_parquet(DATA_DIR / f"rnd_{venue}_densities.parquet", index=False)
 
-    print(f"  [{venue}] Saved: {scalar_path.name} ({len(df_scalar)} rows)")
-    print(f"  [{venue}] Saved: {density_path.name} ({len(df_density)} rows)")
+    print(f"  [{venue}] Saved: rnd_{venue}_summary.parquet")
+    print(f"  [{venue}] Saved: rnd_{venue}_densities.parquet")
 
     return df_scalar
 
@@ -195,28 +189,19 @@ def extract_all_densities():
     print(f"  Sample: {SAMPLE_START} → {SAMPLE_END}")
     print(f"  Target maturities: {TARGET_MATURITIES_DAYS} days")
 
-    SURFACES_DIR.mkdir(parents=True, exist_ok=True)
-
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
     all_summaries = []
 
-    print("\n  Loading fitted SSVI parameters...")
     params = load_ssvi_params()
-    print(f"  Loaded {len(params):,} parameter rows "
-          f"({params['date'].nunique()} dates, venues: {sorted(params['venue'].unique())})")
-
     for venue in ["CME", "DER"]:
         df = load_venue_data(venue)
-        print(f"\n  {venue}: {len(df):,} options, {df['date'].nunique()} days")
-
         results = extract_venue_densities(venue, df, params)
         summary = save_rnd_results(results, venue)
         if summary is not None:
             all_summaries.append(summary)
 
-    # Summary statistics
     if all_summaries:
         df_all = pd.concat(all_summaries, ignore_index=True)
-
         print(f"\n  {'=' * 60}")
         print(f"  RND EXTRACTION COMPLETE")
         print(f"  {'=' * 60}")

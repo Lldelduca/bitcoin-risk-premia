@@ -14,19 +14,19 @@ Plus one deferred specification for the extended-sample analysis:
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from src.config import get_path, SAMPLE
+from src.config import get_path, get_sample_window
 
-SAMPLE_START = pd.to_datetime(SAMPLE["start_date"])
-SAMPLE_END = pd.to_datetime(SAMPLE["end_date"])
+start_str, end_str = get_sample_window()
+SAMPLE_START, SAMPLE_END = pd.Timestamp(start_str), pd.Timestamp(end_str)
 
-CLEAN_DIR = Path(get_path("cleaned_cme")).parent
-SURFACES_DIR = CLEAN_DIR.parent / "surfaces"
-COND_DIR = CLEAN_DIR.parent / "conditioning"
-COND_DIR.mkdir(parents=True, exist_ok=True)
+DATA_DIR = get_path("data_phase1")
+RESULTS_DIR = get_path("results_phase1")
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
-PANEL_PATH = CLEAN_DIR / "auxiliary_panel.parquet"
-STATE_PATH = SURFACES_DIR / "tensor_pca_state.parquet"
-FUNDING_PATH = CLEAN_DIR / "funding_diff.parquet"
+PANEL_PATH = get_path("cleaned_auxiliary")
+STATE_PATH = DATA_DIR / "tensor_pca_state_almeida.parquet"
+FUNDING_PATH = get_path("funding_diff")
 
 MACRO_VARS = ["vix", "baa_spread", "dgs2", "dxy"]
 CRYPTO_VARS = ["Z_IVS_1", "rv", "fng"]
@@ -113,14 +113,14 @@ def coverage_report(specs: dict[str, tuple[pd.DataFrame, list[str]]]) -> pd.Data
         })
 
     summary = pd.DataFrame(rows)
-    summary.to_csv(COND_DIR / "conditioning_coverage.csv", index=False)
+    summary.to_csv(RESULTS_DIR / "conditioning_coverage.csv", index=False)
     print(f"\n  Coverage report:")
     print(summary.to_string(index=False))
     return summary
 
 def correlation_report(Z_full: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
     corr = Z_full[cols].corr()
-    corr.to_csv(COND_DIR / "conditioning_correlations.csv")
+    corr.to_csv(RESULTS_DIR / "conditioning_correlations.csv")
     print(f"\n  Pearson correlation matrix (Z_full, standardized):")
     print(corr.round(3).to_string())
     return corr
@@ -156,16 +156,16 @@ def build_conditioning_vectors():
     Z_macro, Z_crypto, Z_full, Z_crypto_hl = build_specifications(df_common)
 
     # Save core specifications
-    Z_macro.to_parquet(COND_DIR / "Z_macro.parquet", index=False)
-    Z_crypto.to_parquet(COND_DIR / "Z_crypto.parquet", index=False)
-    Z_full.to_parquet(COND_DIR / "Z_full.parquet", index=False)
-    print(f"\n  Saved Z_macro:  {COND_DIR / 'Z_macro.parquet'} ({Z_macro.shape})")
-    print(f"  Saved Z_crypto: {COND_DIR / 'Z_crypto.parquet'} ({Z_crypto.shape})")
-    print(f"  Saved Z_full:   {COND_DIR / 'Z_full.parquet'} ({Z_full.shape})")
+    Z_macro.to_parquet(DATA_DIR / "Z_macro.parquet", index=False)
+    Z_crypto.to_parquet(DATA_DIR / "Z_crypto.parquet", index=False)
+    Z_full.to_parquet(DATA_DIR / "Z_full.parquet", index=False)
+    print(f"\n  Saved Z_macro:  {DATA_DIR / 'Z_macro.parquet'} ({Z_macro.shape})")
+    print(f"  Saved Z_crypto: {DATA_DIR / 'Z_crypto.parquet'} ({Z_crypto.shape})")
+    print(f"  Saved Z_full:   {DATA_DIR / 'Z_full.parquet'} ({Z_full.shape})")
 
     if Z_crypto_hl is not None:
-        Z_crypto_hl.to_parquet(COND_DIR / "Z_crypto_hl.parquet", index=False)
-        print(f"  Saved Z_crypto_hl: {COND_DIR / 'Z_crypto_hl.parquet'} ({Z_crypto_hl.shape})")
+        Z_crypto_hl.to_parquet(DATA_DIR / "Z_crypto_hl.parquet", index=False)
+        print(f"  Saved Z_crypto_hl: {DATA_DIR / 'Z_crypto_hl.parquet'} ({Z_crypto_hl.shape})")
 
     # Coverage (on the common window only)
     spec_dict = {

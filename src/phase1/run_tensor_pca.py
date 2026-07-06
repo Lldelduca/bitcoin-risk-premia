@@ -9,21 +9,21 @@ import argparse
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from src.config import get_path, SAMPLE, TENSOR_GRID
+from src.config import get_path, get_sample_window, get_tensor_grid
 from src.phase1.tensor_pca import (build_ivs_tensor, standardize_tensor, cp_als, select_rank)
 
-SAMPLE_START = SAMPLE["start_date"]
-SAMPLE_END = SAMPLE["end_date"]
+SAMPLE_START, SAMPLE_END = get_sample_window()
+TENSOR_GRID = get_tensor_grid()
 
 MATURITY_GRIDS = {
     "almeida": [9, 27, 45],
     "broad": [14, 21, 27, 35, 45, 60, 90, 120, 180],
 }
 
-SURFACES_DIR = Path(get_path("cleaned_cme")).parent.parent / "surfaces"
-SURFACES_DIR.mkdir(parents=True, exist_ok=True)
-
-CLEAN_DIR = Path(get_path("cleaned_cme")).parent
+DATA_DIR = get_path("data_phase1")
+RESULTS_DIR = get_path("results_phase1")
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
 def _enforce_sign_convention(factors, meta):
     """Anchors each CP component's time factor to corr(U_time[:, r], RV) >= 0.
@@ -34,12 +34,12 @@ def _enforce_sign_convention(factors, meta):
     which is what reproducibility requires. The moneyness factor (mode 1) is
     flipped jointly so the CP reconstruction is bit-identical.
     """
-    panel_path = CLEAN_DIR / "auxiliary_panel.parquet"
-    if not panel_path.exists():
-        print("  [WARN] auxiliary_panel.parquet not found; sign convention NOT enforced.")
+    aux_path = get_path("cleaned_auxiliary")
+    if not aux_path.exists():
+        print("  [WARN] cleaned_auxiliary.parquet not found; sign convention NOT enforced.")
         return factors
 
-    panel = pd.read_parquet(panel_path)[["date", "rv"]]
+    panel = pd.read_parquet(aux_path)[["date", "rv"]]
     panel["date"] = pd.to_datetime(panel["date"])
     rv = panel.set_index("date")["rv"].reindex(pd.to_datetime(meta["dates"]))
 
@@ -68,7 +68,7 @@ def run_tensor_decomposition(grid_name: str = "almeida"):
     print(f"  Sample: {SAMPLE_START} → {SAMPLE_END}")
 
     # Load fitted SSVI parameters
-    params_path = SURFACES_DIR / "ssvi_params.parquet"
+    params_path = DATA_DIR / "ssvi_params.parquet"
     params = pd.read_parquet(params_path)
     params["date"] = pd.to_datetime(params["date"])
     print(f"\n  Loaded {len(params):,} fitted SSVI parameter rows")
@@ -168,11 +168,11 @@ def run_tensor_decomposition(grid_name: str = "almeida"):
 
     # Save outputs
     suffix = f"_{grid_name}"
-    state_path = SURFACES_DIR / f"tensor_pca_state{suffix}.parquet"
+    state_path = DATA_DIR / f"tensor_pca_state{suffix}.parquet"
     Z_state.to_parquet(state_path)
     print(f"\n  Saved state vector: {state_path}")
 
-    factors_path = SURFACES_DIR / f"tensor_pca_factors{suffix}.npz"
+    factors_path = DATA_DIR / f"tensor_pca_factors{suffix}.npz"
     np.savez(
         factors_path,
         U_time=factors[0],
@@ -189,18 +189,18 @@ def run_tensor_decomposition(grid_name: str = "almeida"):
     )
     print(f"  Saved factors: {factors_path}")
 
-    diag_path = SURFACES_DIR / f"tensor_pca_diagnostics{suffix}.csv"
+    diag_path = DATA_DIR / f"tensor_pca_diagnostics{suffix}.csv"
     rank_result["diagnostics"].to_csv(diag_path, index=False)
     print(f"  Saved diagnostics: {diag_path}")
 
-    seed_diag_path = SURFACES_DIR / f"tensor_pca_diagnostics_seeds{suffix}.csv"
+    seed_diag_path = DATA_DIR / f"tensor_pca_diagnostics_seeds{suffix}.csv"
     rank_result["diagnostics_all_seeds"].to_csv(seed_diag_path, index=False)
     print(f"  Saved seed-robustness diagnostics: {seed_diag_path}")
 
     if grid_name == "almeida":
-        Z_state.to_parquet(SURFACES_DIR / "tensor_pca_state.parquet")
+        Z_state.to_parquet(DATA_DIR / "tensor_pca_state.parquet")
         np.savez(
-            SURFACES_DIR / "tensor_pca_factors.npz",
+            DATA_DIR / "tensor_pca_factors.npz",
             U_time=factors[0],
             V_moneyness=factors[1],
             W_maturity=factors[2],
@@ -213,9 +213,9 @@ def run_tensor_decomposition(grid_name: str = "almeida"):
             mu_tensor=mu,
             sigma_tensor=sigma,
         )
-        rank_result["diagnostics"].to_csv(SURFACES_DIR / "tensor_pca_diagnostics.csv", index=False)
+        rank_result["diagnostics"].to_csv(DATA_DIR / "tensor_pca_diagnostics.csv", index=False)
         rank_result["diagnostics_all_seeds"].to_csv(
-            SURFACES_DIR / "tensor_pca_diagnostics_seeds.csv", index=False
+            DATA_DIR / "tensor_pca_diagnostics_seeds.csv", index=False
         )
         print(f"  Saved headline (unsuffixed) copies for downstream consumption.")
 

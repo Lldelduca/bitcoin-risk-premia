@@ -36,6 +36,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from src.config import get_path
+
 # Helpers
 LOG_DIR = Path("results") / "pipeline_logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -144,21 +146,12 @@ def phase_1a_surfaces():
     from src.phase1.fit_surfaces import fit_all_venues
     fit_all_venues()
 
-    from src.config import get_path
-    surfaces_dir = Path(get_path("cleaned_cme")).parent.parent / "surfaces"
-    _check_parquet_rows(surfaces_dir / "ssvi_params.parquet",
-                        "SSVI params", min_rows=500)
+    data_dir = get_path('data_phase1')
+    _check_parquet_rows(data_dir / "ssvi_params.parquet", "SSVI params", min_rows=500)
 
-    # Verify the forward column is present (needed by from_params)
-    params = pd.read_parquet(surfaces_dir / "ssvi_params.parquet")
-    if "forward" not in params.columns:
-        print("  [WARN] ssvi_params.parquet lacks the 'forward' column. "
-              "The from_params pathway will fall back to cleaned-data "
-              "forwards — functional but slower. To add the column, the "
-              "updated ssvi.py (Batch 1) must be in place before fitting.")
-    else:
-        n_fwd = params["forward"].notna().sum()
-        print(f"  [checkpoint] 'forward' column present: {n_fwd:,}/{len(params):,} non-null")
+    params = pd.read_parquet(data_dir / "ssvi_params.parquet")
+    n_fwd = params["forward"].notna().sum()
+    print(f"  [checkpoint] 'forward' column present: {n_fwd:,}/{len(params):,} non-null")
 
 def phase_1b_densities():
     """Extract RNDs from saved surfaces; saves rnd_*.parquet."""
@@ -167,10 +160,9 @@ def phase_1b_densities():
     from src.phase1.extract_densities import extract_all_densities
     extract_all_densities()
 
-    from src.config import get_path
-    surfaces_dir = Path(get_path("cleaned_cme")).parent.parent / "surfaces"
+    data_dir = get_path('data_phase1')
     for venue in ["CME", "DER"]:
-        _check_parquet_rows(surfaces_dir / f"rnd_{venue}_summary.parquet",
+        _check_parquet_rows(data_dir / f"rnd_{venue}_summary.parquet",
                             f"{venue} RND summary", min_rows=100)
 
 def phase_1c_tensor():
@@ -184,10 +176,10 @@ def phase_1c_tensor():
         print(f"{'#' * 60}")
         run_tensor_decomposition(grid_name=grid)
 
-    from src.config import get_path
-    surfaces_dir = Path(get_path("cleaned_cme")).parent.parent / "surfaces"
-    _check_file(surfaces_dir / "tensor_pca_diagnostics.csv", "Almeida diagnostics")
-    _check_file(surfaces_dir / "tensor_pca_state.parquet", "Z_IVS state vector")
+    data_dir = get_path('data_phase1')
+    results_dir = get_path('results_phase1')
+    _check_file(results_dir / "tensor_pca_diagnostics_almeida.csv", "Almeida diagnostics")
+    _check_file(data_dir / "tensor_pca_state_almeida.parquet", "Z_IVS state vector")
 
 def phase_1d_conditioning():
     """Build conditioning vectors (Z_crypto, Z_macro, Z_full)."""
@@ -196,16 +188,13 @@ def phase_1d_conditioning():
     from src.phase1.build_conditioning_vectors import build_conditioning_vectors
     build_conditioning_vectors()
 
-    from src.config import get_path
-    cond_dir = Path(get_path("cleaned_cme")).parent.parent / "conditioning"
-    _check_parquet_rows(cond_dir / "Z_crypto.parquet",
-                        "Z_crypto", min_rows=100)
-    # Verify the sign convention held
-    Z = pd.read_parquet(cond_dir / "Z_crypto.parquet")
-    if "Z_IVS_1" in Z.columns and "rv" in Z.columns:
-        rho = Z[["Z_IVS_1", "rv"]].dropna().corr().iloc[0, 1]
-        print(f"  [checkpoint] corr(Z_IVS_1, RV) = {rho:+.3f} (must be > 0)")
-        assert rho > 0, "Sign convention violated — re-run Phase 1c"
+    data_dir = get_path('data_phase1')
+    _check_parquet_rows(data_dir / "Z_crypto.parquet", "Z_crypto", min_rows=100)
+    
+    Z = pd.read_parquet(data_dir / "Z_crypto.parquet")
+    rho = Z[["Z_IVS_1", "rv"]].dropna().corr().iloc[0, 1]
+    print(f"  [checkpoint] corr(Z_IVS_1, RV) = {rho:+.3f} (must be > 0)")
+    assert rho > 0, "Sign convention violated — re-run Phase 1c"
 
 def phase_2_ep(spot_data=None):
     """Physical density estimation and equity premium decomposition."""

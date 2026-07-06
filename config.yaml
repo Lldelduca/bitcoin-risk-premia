@@ -25,6 +25,15 @@ paths:
   funding_deribit: "data/cleaned/funding_deribit.parquet"
   funding_diff: "data/cleaned/funding_diff.parquet"
 
+  # Results Directories
+  results_data: "results/data"
+  data_phase1: "data/phase1"
+  results_phase1: "results/phase1"
+  data_phase2: "data/phase2"
+  results_phase2: "results/phase2"
+  data_phase3: "data/phase3"
+  results_phase3: "results/phase3"
+
 # Filters common to both datasets (applied before dataset-specific filters)
 filters_shared:
   min_tau_days: 10           # Drops options < 10 days to expiry
