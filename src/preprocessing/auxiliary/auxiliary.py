@@ -25,13 +25,7 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 from pathlib import Path
-from src.config import get_path
-
-try:
-    from src.config import API_KEYS
-    _FRED_KEY = API_KEYS.get("fred")
-except (ImportError, AttributeError):
-    _FRED_KEY = None
+from src.config import get_path, get_api_key
 
 PANEL_PATH = get_path("cleaned_auxiliary")
 COVERAGE_PATH = PANEL_PATH.with_name("auxiliary_panel_coverage.csv")
@@ -100,9 +94,7 @@ def fetch_deribit_dvol() -> pd.DataFrame:
 
 # FRED macro variables
 def get_fred_api_key() -> str:
-    if _FRED_KEY:
-        return _FRED_KEY
-    key = os.environ.get("FRED_API_KEY")
+    key = get_api_key("fred") or os.environ.get("FRED_API_KEY")
     if key:
         return key
     raise RuntimeError(
@@ -197,7 +189,7 @@ def build_auxiliary_panel() -> pd.DataFrame:
         for col in FRED_SERIES.keys():
             panel[col] = np.nan
 
-    # ── Crypto sentiment ─────────────────────────────────────────────────────
+    # Crypto sentiment
     print("\n  [3/4] Crypto sentiment...")
     try:
         fng = fetch_fear_greed_index()
@@ -206,7 +198,7 @@ def build_auxiliary_panel() -> pd.DataFrame:
         print(f"    [WARN] Failed to fetch Fear & Greed Index: {e}")
         panel["fng"] = np.nan
 
-    # ── Trim to study window and save ────────────────────────────────────────
+    # Trim to study window and save
     print("\n  [4/4] Finalizing...")
     panel = panel[panel["date"] >= PANEL_START].copy().reset_index(drop=True)
 
@@ -243,7 +235,6 @@ def build_auxiliary_panel() -> pd.DataFrame:
     print(f"  Columns:        {list(panel.columns)}")
 
     return panel
-
 
 if __name__ == "__main__":
     build_auxiliary_panel()

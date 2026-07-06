@@ -25,14 +25,40 @@ def get_path(key: str) -> Path:
 
 def get_filters(dataset: str = "shared") -> dict:
     cfg = load_config()
-    key = f"filters_{dataset}"
+    shared = cfg.get("filters_shared", {})
     
+    if dataset == "shared":
+        return shared
+        
+    key = f"filters_{dataset}"
     if key not in cfg:
         raise KeyError(f"Filter key '{key}' not found in config.yaml")
         
-    return cfg[key]
+    return {**shared, **cfg[key]}
 
 def get_sample_window() -> tuple[str, str]:
     cfg = load_config()
     sample = cfg.get("sample", {})
     return sample.get("start_date"), sample.get("end_date")
+
+def get_api_key(service: str) -> str:
+    cfg = load_config()
+    return cfg.get("api_keys", {}).get(service)
+
+# Phase 1-5 Specific Configurations
+def get_ssvi_config() -> dict:
+    return load_config().get("ssvi", {})
+
+def get_tensor_grid() -> dict:
+    return load_config().get("tensor_grid", {})
+
+def get_return_grid():
+    import numpy as np
+    cfg = load_config()
+    grid_cfg = cfg.get('return_grid', {'min': 0.40, 'max': 2.00, 'points': 1000})
+    
+    return np.linspace(
+        float(grid_cfg['min']), 
+        float(grid_cfg['max']),
+        int(grid_cfg['points'])
+    )
