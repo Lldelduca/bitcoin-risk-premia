@@ -123,7 +123,7 @@ def estimate_physical_density_almeida(
 
 
 def estimate_physical_density_almeida_from_returns(
-    R_data: np.ndarray, R_grid: np.ndarray, n_bins: int = 12,
+    R_data: np.ndarray, R_grid: np.ndarray, n_bins: int = 10,
     poly_order: int = 10, lower_pct: int = 10, upper_pct: int = 90,
     inner_delta: float = 0.01,
 ) -> PhysicalDensity:
