@@ -5,11 +5,12 @@ Runs the full empirical pipeline in dependency order with checkpoints, wall-cloc
 Designed to be kicked off once and left to run; each phase prints a clear banner so you can scroll through the log afterward.
 
 Usage:
-    python main.py                    # full pipeline, all phases
-    python main.py --from 1a          # resume from Phase 1a onward
-    python main.py --only 0b 4        # run only Phase 0b and Phase 4
-    python main.py --skip-bootstrap   # skip the heavy Phase 3b bootstrap
-    python main.py --bootstrap-B 200  # set bootstrap replicates (default 200)
+    python main.py                        # full pipeline, all phases
+    python main.py --from 1a              # resume from Phase 1a onward
+    python main.py --only 0b 4            # run only Phase 0b and Phase 4
+    python main.py --skip-bootstrap       # skip the heavy Phase 3b bootstrap
+    python main.py --skip-nb-sweep        # skip the Phase 2b NB-sweep diagnostic
+    python main.py --bootstrap-B 200      # set bootstrap replicates (default 200)
     python main.py --bootstrap-workers 4  # parallel workers (default 6)
 
 Phase dependency graph:
@@ -20,6 +21,7 @@ Phase dependency graph:
     1c  CP tensor decomposition       (reads: ssvi_params.parquet)
     1d  Conditioning vectors          (reads: CP factors, auxiliary panel)
     2   Physical density + EP decomp  (reads: RNDs, spot prices)
+    2b  NB-sweep diagnostic [optional](reads: Phase 2 outputs; appendix only)
     3   Conditional pricing kernel    (reads: RNDs, physical density, Z vectors)
     3b  Phase 3 bootstrap [optional]  (reads: Phase 3 theta, RNDs, Z vectors)
     4   BKM / CL20 decomposition      (reads: ssvi_params.parquet, Z vectors)
@@ -217,6 +219,39 @@ def phase_2_ep(spot_data=None):
         print(f"  [checkpoint] raw-moment EP: {r['point']:+.4f} "
               f"[{r['ci_lo']:+.4f}, {r['ci_hi']:+.4f}]")
 
+    # Vanilla benchmark diagnostics, if present (v2 three-estimator lineup)
+    summ = pd.read_csv(results_dir / "ep_decomposition_summary.csv")
+    if "vanilla" in set(summ.get("estimator", [])):
+        print("  [checkpoint] AGMW vanilla benchmark present in EP summary")
+
+def phase_2b_nb_sweep():
+    """NB-sweep diagnostic: bin-count stability of enhanced vs AGMW vanilla.
+
+    Appendix-only. Does not write any file that Phase 3+ reads, so it can
+    be skipped or re-run independently without affecting downstream state.
+    """
+    import sys
+    sys.path.insert(0, str(Path.cwd()))
+    from src.phase2.run_nb_sweep import run_nb_sweep
+    run_nb_sweep()
+
+    results_dir = get_path("results_phase2") / "tables"
+    _check_file(results_dir / "nb_sweep_summary.csv", "NB-sweep summary")
+    _check_file(results_dir / "sigma_binding_check.csv", "Published-bound binding check")
+
+    summary = pd.read_csv(results_dir / "nb_sweep_summary.csv")
+    print("\n  [checkpoint] NB-sweep stability (range as fraction of NB=12 peak):")
+    for _, r in summary.iterrows():
+        print(f"    {r['estimator']:>7s} {r['venue']}: "
+              f"density={r['density_range_pct']:.3f}, "
+              f"ep={r['ep_range_pct']:.3f}, "
+              f"total_ep_spread={r['total_ep_spread']:.4f}")
+
+    bind = pd.read_csv(results_dir / "sigma_binding_check.csv")
+    n_bind = int(bind["van_any_bound_binds"].sum())
+    print(f"  [checkpoint] published bounds bind in {n_bind}/{len(bind)} "
+          f"NB settings (vanilla)")
+
 def phase_3_kernel():
     """Conditional pricing kernel estimation (new (b,c,d) parameterization)."""
     import sys
@@ -329,6 +364,7 @@ PHASE_ORDER = [
     ("1c", "CP Tensor Decomposition",          phase_1c_tensor),
     ("1d", "Conditioning Vectors",             phase_1d_conditioning),
     ("2",  "Physical Density & EP Decomp",     phase_2_ep),
+    ("2b", "NB-Sweep Diagnostic (appendix)",   phase_2b_nb_sweep),
     ("3",  "Conditional Pricing Kernel",       phase_3_kernel),
     ("3b", "Kernel Bootstrap (heavy)",         None),  # special handling
     ("4",  "BKM / CL20 Decomposition",         phase_4_bkm),
@@ -347,6 +383,7 @@ Examples:
   python main.py --from 1a              # resume from Phase 1a
   python main.py --only 0b 4            # run only Phases 0b and 4
   python main.py --skip-bootstrap       # skip the heavy kernel bootstrap
+  python main.py --skip-nb-sweep        # skip the Phase 2b NB-sweep diagnostic
   python main.py --skip 0a              # skip the long API scraping step
         """,
     )
@@ -358,6 +395,8 @@ Examples:
                         help="Skip these phases")
     parser.add_argument("--skip-bootstrap", action="store_true",
                         help="Skip the Phase 3b kernel bootstrap")
+    parser.add_argument("--skip-nb-sweep", action="store_true",
+                        help="Skip the Phase 2b NB-sweep diagnostic")
     parser.add_argument("--bootstrap-B", type=int, default=200,
                         help="Number of bootstrap replicates (default 200)")
     parser.add_argument("--bootstrap-workers", type=int, default=6,
@@ -386,6 +425,8 @@ Examples:
         run_tags -= set(args.skip)
     if args.skip_bootstrap:
         run_tags.discard("3b")
+    if args.skip_nb_sweep:
+        run_tags.discard("2b")
 
     print("\n" + "#" * 70)
     print("#" + " " * 68 + "#")
@@ -396,6 +437,8 @@ Examples:
     print(f"\n  Phases to run: {', '.join(t for t in all_tags if t in run_tags)}")
     if args.skip_bootstrap:
         print("  (kernel bootstrap skipped)")
+    if args.skip_nb_sweep:
+        print("  (NB-sweep diagnostic skipped)")
     print()
 
     manifest = []
@@ -473,6 +516,10 @@ Examples:
   8. MFK tent shape: significant under block-bootstrap bands? (fig_mfk_unconditional.png)
   9. Macro/full specs: did they converge with the new (b,c,d) parameterization?
      (run_phase3 log — if yes, update the non-convergence narrative)
+  10. NB-sweep: does the enhanced estimator show a smaller EP-curve range
+      than the AGMW vanilla benchmark across NB 8-13? (nb_sweep_summary.csv)
+  11. Published-bound binding: do her optimizer bounds bind for the vanilla
+      fit at most/all NB settings? (sigma_binding_check.csv)
     """)
 
     sys.exit(1 if n_fail > 0 else 0)

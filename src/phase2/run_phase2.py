@@ -1,8 +1,19 @@
 """
 Phase 2 Orchestrator: Beason-Schreindorfer EP Decomposition.
 
-Loads Phase 1 outputs (daily RNDs from parquet + BTC spot prices), estimates the unconditional physical density 
-(Almeida headline + KDE robustness), computes the EP decomposition for each venue x estimator combination.
+Loads Phase 1 outputs (daily RNDs from parquet + BTC spot prices), estimates the unconditional physical density,
+computes the EP decomposition for each venue x estimator combination. Three estimators, three roles:
+
+  "almeida"  : ENHANCED implementation (v8: anchored body, four-condition
+               GEV point matching, support + monotonicity penalties).
+
+               HEADLINE. Phase 3 consumes this density (npz key p_almeida).
+  "vanilla"  : faithful replication of the published AGMW implementation
+               (OA conventions incl. her bounds, hard splice equalities,
+               rank-deficient body fit). BENCHMARK, main text.
+
+  "kde"      : Gaussian KDE + mass-preserving POT GPD tails. Cross-family
+               robustness, APPENDIX (separate figure set).
 
 """
 
@@ -12,8 +23,13 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 from src.config import get_path, get_sample_window, get_return_grid
 
-from src.phase2.physical_density import (estimate_physical_density_almeida, estimate_physical_density_kde,
-estimate_physical_density_almeida_from_returns, estimate_physical_density_kde_from_returns, compute_overlapping_returns)
+from src.phase2.physical_density import (
+    estimate_physical_density_almeida, estimate_physical_density_kde,
+    estimate_physical_density_grith_vanilla,
+    estimate_physical_density_almeida_from_returns,
+    estimate_physical_density_kde_from_returns,
+    estimate_physical_density_grith_vanilla_from_returns,
+    compute_overlapping_returns)
 from src.phase2.ep_decomposition import (compute_ep_decomposition, compute_ep_contributions)
 from src.phase3.bootstrap_inference import block_bootstrap_statistic
 
@@ -29,10 +45,21 @@ TAB_DIR = RES_P2 / "tables"
 for d in [FIG_DIR, TAB_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
-R_GRID = get_return_grid()  
+R_GRID = get_return_grid()
 EP_BOOT_B = 500
 EP_BOOT_BLOCK = 54
 EP_BOOT_SEED = 42
+
+ESTIMATOR_FNS = {
+    "almeida": estimate_physical_density_almeida_from_returns,
+    "vanilla": estimate_physical_density_grith_vanilla_from_returns,
+    "kde": estimate_physical_density_kde_from_returns,
+}
+ESTIMATOR_LABELS = {
+    "almeida": "Enhanced (this thesis)",
+    "vanilla": "AGMW published",
+    "kde": "KDE + GPD",
+}
 
 SAMPLE_START, SAMPLE_END = get_sample_window()
 
@@ -45,10 +72,10 @@ def load_spot_prices():
     panel = pd.read_parquet(get_path("cleaned_auxiliary"))
     panel["date"] = pd.to_datetime(panel["date"])
     panel = panel.sort_values("date").dropna(subset=["btc_spot"])
-    
+
     start_date = pd.to_datetime(SAMPLE_START)
     end_date = pd.to_datetime(SAMPLE_END)
-    
+
     mask = (panel["date"] >= start_date) & (panel["date"] <= end_date)
     panel = panel.loc[mask]
     return panel["btc_spot"].values
@@ -88,8 +115,7 @@ def compute_average_rnd(rnds):
 def bootstrap_ep_inference(spot, q_by_venue, estimator="almeida", B=EP_BOOT_B, block_length=EP_BOOT_BLOCK, seed=EP_BOOT_SEED):
     R_data = compute_overlapping_returns(spot, horizon=27)
     n = len(R_data)
-    est_fn = (estimate_physical_density_almeida_from_returns if estimator == "almeida"
-              else estimate_physical_density_kde_from_returns)
+    est_fn = ESTIMATOR_FNS[estimator]
     venues = list(q_by_venue.keys())
 
     def stat_fn(idx):
@@ -165,20 +191,31 @@ def run_phase2():
     q_cme = compute_average_rnd(cme_rnds)
     q_der = compute_average_rnd(der_rnds)
 
-    # Estimate physical density (both methods)
-    print("\n  Estimating physical density (Almeida et al.)...")
-    p_almeida = estimate_physical_density_almeida(spot, R_GRID, horizon=27)
-    print(f"    n_returns = {p_almeida.n_returns}, "
-          f"integral = {np.trapezoid(p_almeida.p_R, R_GRID):.4f}")
+    # Estimate physical density (three estimators)
+    print("\n  Estimating physical density (enhanced, headline)...")
+    p_enh = estimate_physical_density_almeida(spot, R_GRID, horizon=27)
+    print(f"    n_returns = {p_enh.n_returns}, "
+          f"integral = {np.trapezoid(p_enh.p_R, R_GRID):.4f}")
 
-    print("  Estimating physical density (KDE)...")
+    print("  Estimating physical density (AGMW vanilla, benchmark)...")
+    p_van = estimate_physical_density_grith_vanilla(spot, R_GRID, horizon=27)
+    dv = p_van.diagnostics
+    print(f"    integral = {np.trapezoid(p_van.p_R, R_GRID):.4f}, "
+          f"opt_success = {dv['opt_success']}, "
+          f"rank_deficient_polyfit = {dv['rank_deficient_polyfit']}")
+    binding = [k for k, v in dv["bounds_binding"].items() if v]
+    print(f"    published-bound binding: {binding or 'none'}")
+
+    print("  Estimating physical density (KDE, appendix robustness)...")
     p_kde = estimate_physical_density_kde(spot, R_GRID, horizon=27)
     print(f"    n_returns = {p_kde.n_returns}, bandwidth = {p_kde.bandwidth:.4f}, "
           f"integral = {np.trapezoid(p_kde.p_R, R_GRID):.4f}")
 
-    # EP decomposition: 2 venues x 2 estimators
+    p_by_est = {"almeida": p_enh, "vanilla": p_van, "kde": p_kde}
+
+    # EP decomposition: 2 venues x 3 estimators
     results = {}
-    for est_name, p_est in [("almeida", p_almeida), ("kde", p_kde)]:
+    for est_name, p_est in p_by_est.items():
         for venue, q_R in [("CME", q_cme), ("DER", q_der)]:
             key = f"{venue}_{est_name}"
             print(f"\n  Computing EP decomposition: {key}")
@@ -190,7 +227,7 @@ def run_phase2():
                 print(f"    {region:>10s}: {c['contribution']:+.4f} "
                       f"({c['share']:+.1%})")
 
-    # Save
+    # Save summary table
     summary_rows = []
     for key, res in results.items():
         venue, est = key.split("_")
@@ -208,13 +245,13 @@ def run_phase2():
         })
     pd.DataFrame(summary_rows).to_csv(TAB_DIR / "ep_decomposition_summary.csv", index=False)
 
-    # Block-bootstrap inference for total EP and regional contributions. The raw-moment total EP is also
+    # Block-bootstrap inference for total EP and regional contributions.
     print(f"\n  Block-bootstrap EP inference "
           f"(B={EP_BOOT_B}, block={EP_BOOT_BLOCK} days, "
-          f"~{p_almeida.n_returns // 27} effectively independent return obs)...")
+          f"~{p_enh.n_returns // 27} effectively independent return obs)...")
     boot_tables = []
     q_by_venue = {"CME": q_cme, "DER": q_der}
-    for est in ["almeida", "kde"]:
+    for est in ["almeida", "vanilla", "kde"]:
         bt = bootstrap_ep_inference(spot, q_by_venue, estimator=est)
         boot_tables.append(bt)
         for v in q_by_venue:
@@ -229,35 +266,47 @@ def run_phase2():
     raw = boot_df[boot_df["estimator"] == "raw_moment"].iloc[0]
     print(f"    [raw moment] ALL: total EP = {raw['point']:+.4f} "
           f"[{raw['ci_lo']:+.4f}, {raw['ci_hi']:+.4f}] "
-          f"(no density estimation; anchors the estimator-distortion gap)")
+          f"(no density estimation; estimator-free anchor)")
     print(f"  Saved: {TAB_DIR / 'ep_bootstrap_ci.csv'}")
 
+    # Persist densities. NOTE: key p_almeida = ENHANCED density; Phase 3
+    # loads this key, do not rename.
     np.savez(
         DATA_P2 / "phase2_densities.npz",
         R_grid=R_GRID,
-        p_almeida=p_almeida.p_R,
+        p_almeida=p_enh.p_R,
+        p_vanilla=p_van.p_R,
         p_kde=p_kde.p_R,
         q_cme=q_cme,
         q_der=q_der,
     )
 
-    # Figures
-    _plot_densities(p_almeida, p_kde, q_cme, q_der)
+    # Figures: main = enhanced + vanilla + q-bar; KDE set -> appendix
+    _plot_densities_main(p_enh, p_van, q_cme, q_der)
+    _plot_densities_kde_appendix(p_enh, p_kde, q_cme, q_der)
     _plot_ep_curves(results)
+    _plot_ep_estimator_comparison(results, "vanilla",
+                                  FIG_DIR / "fig_ep_enhanced_vs_vanilla.png")
+    _plot_ep_estimator_comparison(results, "kde",
+                                  FIG_DIR / "fig_ep_robustness_kde_appendix.png")
     _plot_cep_curves(results)
     _plot_kernels(results)
 
     print(f"\n  Phase 2 complete. Figures in {FIG_DIR}/")
     return results
 
-def _plot_densities(p_almeida, p_kde, q_cme, q_der):
+def _plot_densities_main(p_enh, p_van, q_cme, q_der):
+    """Main-text overlay: enhanced (headline), AGMW vanilla (benchmark),
+    and the time-averaged RND, per venue."""
     fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
     for ax, (venue, q_R, color) in zip(axes,
             [("CME", q_cme, "C0"), ("Deribit", q_der, "C1")]):
-        ax.plot(R_GRID, p_almeida.p_R, "k-", lw=1.5, label=r"$\hat{p}(R)$ (Almeida)")
-        ax.plot(R_GRID, p_kde.p_R, "k--", lw=1.0, alpha=0.5, label=r"$\hat{p}(R)$ (KDE)")
+        ax.plot(R_GRID, p_enh.p_R, "k-", lw=1.6,
+                label=r"$\hat{p}(R)$ enhanced (this thesis)")
+        ax.plot(R_GRID, p_van.p_R, color="C3", ls="-.", lw=1.2,
+                label=r"$\hat{p}(R)$ AGMW published")
         ax.plot(R_GRID, q_R, color=color, lw=1.5,
-                label=rf"$\hat{{q}}^{{\mathrm{{{venue}}}}}(R)$")
+                label=rf"$\bar{{q}}^{{\mathrm{{{venue}}}}}(R)$")
         ax.axvline(1.0, color="gray", lw=0.5, ls=":")
         ax.set_xlabel("Gross return $R$")
         ax.set_xlim(0.50, 1.60)
@@ -267,6 +316,28 @@ def _plot_densities(p_almeida, p_kde, q_cme, q_der):
     fig.suptitle("Physical vs Risk-Neutral Densities (27-day horizon)", fontsize=13)
     plt.tight_layout()
     plt.savefig(FIG_DIR / "fig_densities_overlay.png", dpi=150)
+    plt.close()
+
+def _plot_densities_kde_appendix(p_enh, p_kde, q_cme, q_der):
+    """Appendix overlay: enhanced vs the cross-family KDE+GPD estimator."""
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
+    for ax, (venue, q_R, color) in zip(axes,
+            [("CME", q_cme, "C0"), ("Deribit", q_der, "C1")]):
+        ax.plot(R_GRID, p_enh.p_R, "k-", lw=1.6,
+                label=r"$\hat{p}(R)$ enhanced (this thesis)")
+        ax.plot(R_GRID, p_kde.p_R, "k--", lw=1.0, alpha=0.6,
+                label=r"$\hat{p}(R)$ KDE + GPD")
+        ax.plot(R_GRID, q_R, color=color, lw=1.5,
+                label=rf"$\bar{{q}}^{{\mathrm{{{venue}}}}}(R)$")
+        ax.axvline(1.0, color="gray", lw=0.5, ls=":")
+        ax.set_xlabel("Gross return $R$")
+        ax.set_xlim(0.50, 1.60)
+        ax.set_title(venue)
+        ax.legend(fontsize=9)
+    axes[0].set_ylabel("Density")
+    fig.suptitle("Physical Density: Cross-Family Robustness (KDE + GPD)", fontsize=13)
+    plt.tight_layout()
+    plt.savefig(FIG_DIR / "fig_densities_kde_appendix.png", dpi=150)
     plt.close()
 
 def _plot_ep_curves(results):
@@ -282,10 +353,32 @@ def _plot_ep_curves(results):
     ax.set_xlabel("Gross return $R$")
     ax.set_ylabel(r"$\mathrm{ep}^j(R)$")
     ax.set_xlim(0.50, 1.60)
-    ax.set_title("Equity Premium Curve: CME vs Deribit (27-day, Almeida estimator)")
+    ax.set_title("Equity Premium Curve: CME vs Deribit (27-day, enhanced estimator)")
     ax.legend()
     plt.tight_layout()
     plt.savefig(FIG_DIR / "fig_ep_curve.png", dpi=150)
+    plt.close()
+
+def _plot_ep_estimator_comparison(results, est_b, out_path):
+    """Per-venue EP curves: enhanced vs a comparison estimator."""
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
+    for ax, venue in zip(axes, ["CME", "DER"]):
+        d_a = results[f"{venue}_almeida"]["decomp"]
+        d_b = results[f"{venue}_{est_b}"]["decomp"]
+        ax.plot(R_GRID, d_a.ep, "C0-", lw=1.5,
+                label=ESTIMATOR_LABELS["almeida"])
+        ax.plot(R_GRID, d_b.ep, "C3--", lw=1.3,
+                label=ESTIMATOR_LABELS[est_b])
+        ax.axhline(0, color="black", lw=0.5)
+        ax.axvline(1.0, color="gray", lw=0.5, ls=":")
+        ax.set_xlabel("Gross return $R$")
+        ax.set_xlim(0.50, 1.60)
+        ax.set_title("Deribit" if venue == "DER" else venue)
+        ax.legend(fontsize=9)
+    axes[0].set_ylabel(r"$\mathrm{ep}^j(R)$")
+    fig.suptitle(f"EP Curve: enhanced vs {ESTIMATOR_LABELS[est_b]}", fontsize=13)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150)
     plt.close()
 
 def _plot_cep_curves(results):
@@ -299,7 +392,7 @@ def _plot_cep_curves(results):
     ax.set_xlabel("Gross return $R$")
     ax.set_ylabel(r"$\mathrm{CEP}^j(R)$")
     ax.set_xlim(0.50, 1.60)
-    ax.set_title("Cumulative Equity Premium: CME vs Deribit (27-day, Almeida estimator)")
+    ax.set_title("Cumulative Equity Premium: CME vs Deribit (27-day, enhanced estimator)")
     ax.legend()
     plt.tight_layout()
     plt.savefig(FIG_DIR / "fig_cep_curve.png", dpi=150)
@@ -317,7 +410,7 @@ def _plot_kernels(results):
     ax.set_ylabel(r"$\hat{m}^j(R)$")
     ax.set_xlim(0.50, 1.60)
     ax.set_ylim(0, 5)
-    ax.set_title("Unconditional Pricing Kernel: CME vs Deribit (27-day, Almeida estimator)")
+    ax.set_title("Unconditional Pricing Kernel: CME vs Deribit (27-day, enhanced estimator)")
     ax.legend()
     plt.tight_layout()
     plt.savefig(FIG_DIR / "fig_kernel_unconditional.png", dpi=150)
