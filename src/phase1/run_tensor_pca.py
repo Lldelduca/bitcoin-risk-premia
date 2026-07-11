@@ -15,10 +15,12 @@ from src.phase1.tensor_pca import (build_ivs_tensor, standardize_tensor, cp_als,
 SAMPLE_START, SAMPLE_END = get_sample_window()
 TENSOR_GRID = get_tensor_grid()
 
-MATURITY_GRIDS = {
+_DEFAULT_MATURITY_GRIDS = {
     "almeida": [9, 27, 45],
     "broad": [14, 21, 27, 35, 45, 60, 90, 120, 180],
 }
+
+MATURITY_GRIDS = TENSOR_GRID.get("maturity_grids", _DEFAULT_MATURITY_GRIDS)
 
 DATA_DIR = get_path("data_phase1")
 RESULTS_DIR = get_path("results_phase1")
@@ -258,4 +260,3 @@ if __name__ == "__main__":
             run_tensor_decomposition(grid_name=g)
     else:
         run_tensor_decomposition(grid_name=args.grid)
-        

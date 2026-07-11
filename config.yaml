@@ -59,10 +59,12 @@ ssvi:
 
 # Tensor PCA
 tensor_grid:
-  t_grid_days: [14, 21, 27, 35, 45, 60, 90, 120, 180]
   k_grid_min: -0.60
   k_grid_max: 0.70
   k_grid_points: 27
+  maturity_grids:
+    almeida: [9, 27, 45]                            
+    broad: [14, 21, 27, 35, 45, 60, 90, 120, 180] 
 
 # API keys
 api_keys:

@@ -1,8 +1,8 @@
 """
-Phase 4 Orchestrator: BKM Moment Extraction & CL20/CL24 Cumulant Decomposition.
+Phase 4 Orchestrator: BKM Moment Extraction & CL20 Cumulant Decomposition.
 
 Extracts daily risk-neutral moments from the SSVI surface via BKM (2003), forms the Chabi-Yo & Loudis (2020) lower-bound 
-contributions, aggregates them unconditionally and by volatility tercile (CL24 conditional decomposition), and reports the 
+contributions, aggregates them unconditionally and by volatility tercile (regime-conditional decomposition), and reports the 
 variance risk premium as a secondary diagnostic. A theta robustness sweep is produced for the preference parameter.
 
 """
@@ -120,7 +120,7 @@ def load_physical_variance():
 
 def run_phase4():
     print("\n" + "=" * 60)
-    print("  Phase 4: BKM Extraction & CL20/CL24 Decomposition")
+    print("  Phase 4: BKM Extraction & CL20 Decomposition")
     print(f"  Window: {SAMPLE_START.date()} -> {SAMPLE_END.date()}")
     print(f"  theta baseline = {THETA_BASELINE}; weights = {cyl_weights(THETA_BASELINE)}")
     print("=" * 60)
@@ -177,7 +177,7 @@ def run_phase4():
     premia_df.to_parquet(PHASE4_DIR / "cumulant_premia.parquet", index=False)
     print(f"  Saved cumulant premia: {len(premia_df)} rows")
 
-    # Step 4: CL24 decomposition tables
+    # Step 4: Regime-conditional decomposition tables
     cme_days = set(premia_df.loc[premia_df["venue"] == "CME", "date"])
     der_days = set(premia_df.loc[premia_df["venue"] == "DER", "date"])
     matched_days = cme_days & der_days
@@ -185,7 +185,7 @@ def run_phase4():
     print(f"\n  Matched CME-Deribit days: {len(matched_days)} "
           f"({len(premia_matched)} venue-day rows)")
 
-    print("\n  CL24 decomposition — MATCHED DAYS (headline)...")
+    print("\n  Regime-conditional decomposition — MATCHED DAYS (headline)...")
     decomp_matched = compute_cyl_decomposition_table(premia_matched, tercile_col="tercile")
     decomp_matched.to_csv(TAB_DIR / "cyl_decomposition_matched.csv", index=False)
     print(decomp_matched.round(4).to_string(index=False))
@@ -200,7 +200,7 @@ def run_phase4():
                   f"sum of terciles {n_terc} — tercile labels missing on "
                   f"{n_uncond - n_terc} matched days; check Z_crypto coverage.")
 
-    print("\n  CL24 decomposition — ALL DAYS (supplementary)...")
+    print("\n  Regime-conditional decomposition — ALL DAYS (supplementary)...")
     decomp = compute_cyl_decomposition_table(premia_df, tercile_col="tercile")
     decomp.to_csv(TAB_DIR / "cyl_decomposition.csv", index=False)
     print(decomp.round(4).to_string(index=False))
@@ -386,4 +386,3 @@ def _plot_theta_robustness(rob):
 
 if __name__ == "__main__":
     run_phase4()
-    

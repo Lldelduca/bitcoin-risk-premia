@@ -143,14 +143,14 @@ def run_friction_regressions():
                     "dep_var": dep, "spec": spec_name, "regressor": nm,
                     "coef": res.params[j], "se": res.bse[j],
                     "t_stat": res.tvalues[j], "p_value": res.pvalues[j],
-                    "stars": ("***" if res.pvalues[j] < 0.001 else
+                    "stars": ("***" if res.pvalues[j] < 0.01 else
                               "**" if res.pvalues[j] < 0.01 else
                               "*" if res.pvalues[j] < 0.05 else ""),
                     "r2": r2, "n": n,
                 })
             if spec_name == "joint":
                 coefs = ", ".join(
-                    f"{nm}={res.params[j]:+.5f}{'***' if res.pvalues[j]<0.001 else '**' if res.pvalues[j]<0.01 else '*' if res.pvalues[j]<0.05 else ''}"
+                    f"{nm}={res.params[j]:+.5f}{'***' if res.pvalues[j]<0.01 else '**' if res.pvalues[j]<0.05 else '*' if res.pvalues[j]<0.10 else ''}"
                     for j, nm in enumerate(names))
                 r2s = f"{r2:.3f}" if np.isfinite(r2) else "n/a"
                 print(f"      [joint]  {coefs}   R²={r2s}")
@@ -187,4 +187,3 @@ def run_friction_regressions():
 
 if __name__ == "__main__":
     run_friction_regressions()
-    
