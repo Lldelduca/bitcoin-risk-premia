@@ -2,19 +2,21 @@
 Phase 2 Orchestrator: Beason-Schreindorfer EP Decomposition.
 
 Loads Phase 1 outputs (daily RNDs from parquet + BTC spot prices), estimates the unconditional physical density,
-computes the EP decomposition for each venue x estimator combination. Three estimators, three roles:
+computes the EP decomposition for each venue x estimator combination.
 
+REVISION v2 (2026-07-06) -- estimator lineup restructured
+---------------------------------------------------------
+Three estimators, three roles:
   "almeida"  : ENHANCED implementation (v8: anchored body, four-condition
                GEV point matching, support + monotonicity penalties).
-
                HEADLINE. Phase 3 consumes this density (npz key p_almeida).
   "vanilla"  : faithful replication of the published AGMW implementation
                (OA conventions incl. her bounds, hard splice equalities,
                rank-deficient body fit). BENCHMARK, main text.
-
   "kde"      : Gaussian KDE + mass-preserving POT GPD tails. Cross-family
                robustness, APPENDIX (separate figure set).
-
+Main figures show enhanced + vanilla + q-bar; KDE figures carry the
+_appendix suffix.
 """
 
 import numpy as np
@@ -46,6 +48,12 @@ for d in [FIG_DIR, TAB_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 R_GRID = get_return_grid()
+# AGMW output-grid convention (her interp1(rt, Q_rt, -1:0.01:1) in gross
+# units): ALL p-hat-derived FIGURES (densities, EP, CEP, kernel) are plotted
+# on this coarser grid so that residual
+# C0 slope kinks at the splices match the visual resolution of the
+# published densities. All INTEGRALS stay on R_GRID.
+R_PLOT = np.arange(R_GRID[0], R_GRID[-1] + 0.001, 0.01)
 EP_BOOT_B = 500
 EP_BOOT_BLOCK = 54
 EP_BOOT_SEED = 42
@@ -301,11 +309,13 @@ def _plot_densities_main(p_enh, p_van, q_cme, q_der):
     fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
     for ax, (venue, q_R, color) in zip(axes,
             [("CME", q_cme, "C0"), ("Deribit", q_der, "C1")]):
-        ax.plot(R_GRID, p_enh.p_R, "k-", lw=1.6,
+        ax.plot(R_PLOT, np.interp(R_PLOT, R_GRID, p_enh.p_R), "k-", lw=1.6,
                 label=r"$\hat{p}(R)$ enhanced (this thesis)")
-        ax.plot(R_GRID, p_van.p_R, color="C3", ls="-.", lw=1.2,
+        ax.plot(R_PLOT, np.interp(R_PLOT, R_GRID, p_van.p_R),
+                color="C3", ls="-.", lw=1.2,
                 label=r"$\hat{p}(R)$ AGMW published")
-        ax.plot(R_GRID, q_R, color=color, lw=1.5,
+        ax.plot(R_PLOT, np.interp(R_PLOT, R_GRID, q_R),
+                color=color, lw=1.5,
                 label=rf"$\bar{{q}}^{{\mathrm{{{venue}}}}}(R)$")
         ax.axvline(1.0, color="gray", lw=0.5, ls=":")
         ax.set_xlabel("Gross return $R$")
@@ -323,11 +333,13 @@ def _plot_densities_kde_appendix(p_enh, p_kde, q_cme, q_der):
     fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
     for ax, (venue, q_R, color) in zip(axes,
             [("CME", q_cme, "C0"), ("Deribit", q_der, "C1")]):
-        ax.plot(R_GRID, p_enh.p_R, "k-", lw=1.6,
+        ax.plot(R_PLOT, np.interp(R_PLOT, R_GRID, p_enh.p_R), "k-", lw=1.6,
                 label=r"$\hat{p}(R)$ enhanced (this thesis)")
-        ax.plot(R_GRID, p_kde.p_R, "k--", lw=1.0, alpha=0.6,
+        ax.plot(R_PLOT, np.interp(R_PLOT, R_GRID, p_kde.p_R),
+                "k--", lw=1.0, alpha=0.6,
                 label=r"$\hat{p}(R)$ KDE + GPD")
-        ax.plot(R_GRID, q_R, color=color, lw=1.5,
+        ax.plot(R_PLOT, np.interp(R_PLOT, R_GRID, q_R),
+                color=color, lw=1.5,
                 label=rf"$\bar{{q}}^{{\mathrm{{{venue}}}}}(R)$")
         ax.axvline(1.0, color="gray", lw=0.5, ls=":")
         ax.set_xlabel("Gross return $R$")
@@ -344,8 +356,8 @@ def _plot_ep_curves(results):
     fig, ax = plt.subplots(figsize=(12, 5))
     d_cme = results["CME_almeida"]["decomp"]
     d_der = results["DER_almeida"]["decomp"]
-    ax.plot(R_GRID, d_cme.ep, "C0-", lw=1.5, label="CME")
-    ax.plot(R_GRID, d_der.ep, "C1-", lw=1.5, label="Deribit")
+    ax.plot(R_PLOT, np.interp(R_PLOT, R_GRID, d_cme.ep), "C0-", lw=1.5, label="CME")
+    ax.plot(R_PLOT, np.interp(R_PLOT, R_GRID, d_der.ep), "C1-", lw=1.5, label="Deribit")
     ax.axhline(0, color="black", lw=0.5)
     ax.axvline(1.0, color="gray", lw=0.5, ls=":")
     ax.axvspan(R_GRID[0], 0.90, alpha=0.05, color="red")
@@ -365,9 +377,9 @@ def _plot_ep_estimator_comparison(results, est_b, out_path):
     for ax, venue in zip(axes, ["CME", "DER"]):
         d_a = results[f"{venue}_almeida"]["decomp"]
         d_b = results[f"{venue}_{est_b}"]["decomp"]
-        ax.plot(R_GRID, d_a.ep, "C0-", lw=1.5,
+        ax.plot(R_PLOT, np.interp(R_PLOT, R_GRID, d_a.ep), "C0-", lw=1.5,
                 label=ESTIMATOR_LABELS["almeida"])
-        ax.plot(R_GRID, d_b.ep, "C3--", lw=1.3,
+        ax.plot(R_PLOT, np.interp(R_PLOT, R_GRID, d_b.ep), "C3--", lw=1.3,
                 label=ESTIMATOR_LABELS[est_b])
         ax.axhline(0, color="black", lw=0.5)
         ax.axvline(1.0, color="gray", lw=0.5, ls=":")
@@ -385,8 +397,8 @@ def _plot_cep_curves(results):
     fig, ax = plt.subplots(figsize=(12, 5))
     d_cme = results["CME_almeida"]["decomp"]
     d_der = results["DER_almeida"]["decomp"]
-    ax.plot(R_GRID, d_cme.cep, "C0-", lw=1.5, label="CME")
-    ax.plot(R_GRID, d_der.cep, "C1-", lw=1.5, label="Deribit")
+    ax.plot(R_PLOT, np.interp(R_PLOT, R_GRID, d_cme.cep), "C0-", lw=1.5, label="CME")
+    ax.plot(R_PLOT, np.interp(R_PLOT, R_GRID, d_der.cep), "C1-", lw=1.5, label="Deribit")
     ax.axhline(0, color="black", lw=0.5)
     ax.axvline(1.0, color="gray", lw=0.5, ls=":")
     ax.set_xlabel("Gross return $R$")
@@ -402,8 +414,8 @@ def _plot_kernels(results):
     fig, ax = plt.subplots(figsize=(12, 5))
     d_cme = results["CME_almeida"]["decomp"]
     d_der = results["DER_almeida"]["decomp"]
-    ax.plot(R_GRID, d_cme.kernel, "C0-", lw=1.5, label="CME")
-    ax.plot(R_GRID, d_der.kernel, "C1-", lw=1.5, label="Deribit")
+    ax.plot(R_PLOT, np.interp(R_PLOT, R_GRID, d_cme.kernel), "C0-", lw=1.5, label="CME")
+    ax.plot(R_PLOT, np.interp(R_PLOT, R_GRID, d_der.kernel), "C1-", lw=1.5, label="Deribit")
     ax.axhline(1.0, color="gray", lw=0.5, ls=":")
     ax.axvline(1.0, color="gray", lw=0.5, ls=":")
     ax.set_xlabel("Gross return $R$")
