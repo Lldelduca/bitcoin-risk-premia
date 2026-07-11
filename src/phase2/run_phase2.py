@@ -4,19 +4,6 @@ Phase 2 Orchestrator: Beason-Schreindorfer EP Decomposition.
 Loads Phase 1 outputs (daily RNDs from parquet + BTC spot prices), estimates the unconditional physical density,
 computes the EP decomposition for each venue x estimator combination.
 
-REVISION v2 (2026-07-06) -- estimator lineup restructured
----------------------------------------------------------
-Three estimators, three roles:
-  "almeida"  : ENHANCED implementation (v8: anchored body, four-condition
-               GEV point matching, support + monotonicity penalties).
-               HEADLINE. Phase 3 consumes this density (npz key p_almeida).
-  "vanilla"  : faithful replication of the published AGMW implementation
-               (OA conventions incl. her bounds, hard splice equalities,
-               rank-deficient body fit). BENCHMARK, main text.
-  "kde"      : Gaussian KDE + mass-preserving POT GPD tails. Cross-family
-               robustness, APPENDIX (separate figure set).
-Main figures show enhanced + vanilla + q-bar; KDE figures carry the
-_appendix suffix.
 """
 
 import numpy as np
@@ -48,11 +35,6 @@ for d in [FIG_DIR, TAB_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 R_GRID = get_return_grid()
-# AGMW output-grid convention (her interp1(rt, Q_rt, -1:0.01:1) in gross
-# units): ALL p-hat-derived FIGURES (densities, EP, CEP, kernel) are plotted
-# on this coarser grid so that residual
-# C0 slope kinks at the splices match the visual resolution of the
-# published densities. All INTEGRALS stay on R_GRID.
 R_PLOT = np.arange(R_GRID[0], R_GRID[-1] + 0.001, 0.01)
 EP_BOOT_B = 500
 EP_BOOT_BLOCK = 54
