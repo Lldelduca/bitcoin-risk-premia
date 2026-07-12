@@ -26,8 +26,8 @@ import pandas as pd
 from pathlib import Path
 from src.config import get_path
 
-PHASE3_DIR = Path(get_path("cleaned_cme")).parent.parent / "phase3"
-TAB_DIR = Path("results") / "phase3" / "tables"
+DATA_P3 = get_path("data_phase3")
+TAB_DIR = get_path("results_phase3") / "tables"
 TAB_DIR.mkdir(parents=True, exist_ok=True)
 
 COEFS = ("b", "c", "d")
@@ -39,7 +39,7 @@ def _curv_at_money(draws, tercile):
     return 2.0 * draws[f"c_{tercile}"].to_numpy(float) + 6.0 * draws[f"d_{tercile}"].to_numpy(float)
 
 def joint_regime_test(venue, spec="crypto", lo="low", hi="high", point_theta=None):
-    path = PHASE3_DIR / f"phase3_bootstrap_draws_{venue}_{spec}.parquet"
+    path = DATA_P3 / f"phase3_bootstrap_draws_{venue}_{spec}.parquet"
     if not path.exists():
         raise FileNotFoundError(
             f"{path} not found — run run_phase3_bootstrap.py first "

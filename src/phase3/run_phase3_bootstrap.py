@@ -23,10 +23,9 @@ from src.config import get_path, get_return_grid
 from src.phase3.conditional_kernel import (estimate_conditional_kernel, coefficients_at)
 from src.phase3.bootstrap_inference import circular_block_indices
 from src.phase3.run_phase3 import (load_daily_rnds_from_parquet, load_conditioning_spec, align_rnds_and_Z,
-    load_volatility_tercile_labels, PHASE2_DIR, PHASE3_DIR, TAB_DIR, SPECS)
+    load_volatility_tercile_labels, DATA_P2, DATA_P3, TAB_DIR, SPECS)
 
 R_GRID = get_return_grid()
-
 BLOCK_LENGTH = 27
 DEFAULT_B = 200
 MAX_ITER_REPLICATE = 3000
@@ -80,7 +79,7 @@ def run_bootstrap(venues, spec_name, B, workers, ci=0.95):
     print("=" * 60)
 
     # Physical density (fixed at full-sample value)
-    p_data = np.load(PHASE2_DIR / "phase2_densities.npz")
+    p_data = np.load(DATA_P2 / "phase2_densities.npz")
     p_phys = p_data["p_almeida"]
     if len(p_phys) != len(R_GRID):
         raise ValueError(
@@ -101,7 +100,7 @@ def run_bootstrap(venues, spec_name, B, workers, ci=0.95):
         Q = np.stack(aligned_rnds)
         print(f"  [{venue}] {Q.shape[0]} aligned days, n_Z = {Z.shape[1]}")
 
-        theta_path = PHASE3_DIR / f"phase3_{venue}_{spec_name}.npz"
+        theta_path = DATA_P3 / f"phase3_{venue}_{spec_name}.npz"
         if not theta_path.exists():
             print(f"  [{venue}] SKIP: {theta_path.name} not found — "
                   f"run run_phase3 first.")
@@ -140,7 +139,7 @@ def run_bootstrap(venues, spec_name, B, workers, ci=0.95):
                     print(f"    {i+1}/{B} done")
 
         draws = pd.DataFrame(rows)
-        draws.to_parquet(PHASE3_DIR / f"phase3_bootstrap_draws_{venue}_{spec_name}.parquet",
+        draws.to_parquet(DATA_P3 / f"phase3_bootstrap_draws_{venue}_{spec_name}.parquet",
                          index=False)
         n_ok = len(draws)
         n_conv = int(draws["converged"].sum()) if n_ok else 0

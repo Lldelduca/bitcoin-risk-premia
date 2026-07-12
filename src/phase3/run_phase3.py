@@ -10,7 +10,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from src.config import get_path, SAMPLE, get_return_grid
+from src.config import get_path, get_sample_window, get_return_grid
 
 from src.phase3.conditional_kernel import (
     estimate_conditional_kernel,
@@ -20,17 +20,18 @@ from src.phase3.conditional_kernel import (
 
 from src.phase3.bootstrap_inference import block_bootstrap_mean_bands
 
-CLEAN_DIR = Path(get_path("cleaned_cme")).parent
-SURFACES_DIR = CLEAN_DIR.parent / "surfaces"
-PHASE2_DIR = CLEAN_DIR.parent / "phase2"
-PHASE3_DIR = CLEAN_DIR.parent / "phase3"
-COND_DIR = CLEAN_DIR.parent / "conditioning"
-FIG_DIR = Path("results") / "phase3" / "figures"
-TAB_DIR = Path("results") / "phase3" / "tables"
-for d in [PHASE3_DIR, FIG_DIR, TAB_DIR]:
+DATA_P1 = get_path("data_phase1")
+DATA_P2 = get_path("data_phase2")
+DATA_P3 = get_path("data_phase3")
+RES_P3 = get_path("results_phase3")
+
+FIG_DIR = RES_P3 / "figures"
+TAB_DIR = RES_P3 / "tables"
+for d in [DATA_P3, RES_P3, FIG_DIR, TAB_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 R_GRID = get_return_grid()
+SAMPLE_START, SAMPLE_END = get_sample_window()
 
 SPECS = {
     "macro": "Z_macro.parquet",
@@ -48,7 +49,7 @@ plt.rcParams["grid.alpha"] = 0.3
 plt.rcParams["font.size"] = 11
 
 def load_daily_rnds_from_parquet(venue, tau_days=27):
-    density_path = SURFACES_DIR / f"rnd_{venue}_densities.parquet"
+    density_path = DATA_P1 / f"rnd_{venue}_densities.parquet"
     df = pd.read_parquet(density_path)
     df["date"] = pd.to_datetime(df["date"])
     df = df[df["tau_days"] == tau_days].sort_values("date").reset_index(drop=True)
@@ -68,16 +69,15 @@ def load_daily_rnds_from_parquet(venue, tau_days=27):
     return dates, rnds
 
 def load_conditioning_spec(spec_name):
-    df = pd.read_parquet(COND_DIR / SPECS[spec_name])
+    df = pd.read_parquet(DATA_P1 / SPECS[spec_name])
     df["date"] = pd.to_datetime(df["date"])
     z_cols = [c for c in df.columns if c != "date" and not c.endswith("_raw")]
     return df["date"].values, df[z_cols].values, z_cols
 
 def load_volatility_tercile_labels():
-    Z_crypto = pd.read_parquet(COND_DIR / "Z_crypto.parquet")
+    Z_crypto = pd.read_parquet(DATA_P1 / "Z_crypto.parquet")
     Z_crypto["date"] = pd.to_datetime(Z_crypto["date"])
-    Z_crypto["tercile"] = pd.qcut(Z_crypto["Z_IVS_1"], q=3,
-                                  labels=["low", "mid", "high"])
+    Z_crypto["tercile"] = pd.qcut(Z_crypto["Z_IVS_1"], q=3, labels=["low", "mid", "high"])
     return Z_crypto[["date", "tercile"]]
 
 def align_rnds_and_Z(rnd_dates, rnds, z_dates, Z_matrix, tercile_df=None):
@@ -146,7 +146,7 @@ def run_phase3():
 
     # Load physical density from Phase 2
     print("\n  Loading Phase 2 physical density...")
-    p_data = np.load(PHASE2_DIR / "phase2_densities.npz")
+    p_data = np.load(DATA_P2 / "phase2_densities.npz")
     p_phys = p_data["p_almeida"]
     print(f"  Physical density integral = {np.trapezoid(p_phys, R_GRID):.4f}")
 
@@ -250,7 +250,7 @@ def run_phase3():
                 # Save per-estimation outputs (tercile labels included so
                 # downstream consumers and notebooks never recompute them)
                 np.savez(
-                    PHASE3_DIR / f"phase3_{key}.npz",
+                    DATA_P3 / f"phase3_{key}.npz",
                     theta=result.theta, dates=dates,
                     coeffs_b=coeffs["b"],
                     coeffs_c=coeffs["c"], coeffs_d=coeffs["d"],
@@ -366,7 +366,7 @@ def _compute_and_plot_mfk(venue_rnds):
     print(f"  MFK over {n} matched days (95% block-bootstrap bands, "
           f"block={bands['block_length']}, B={bands['B']}).")
 
-    np.savez(PHASE3_DIR / "mfk_unconditional.npz",
+    np.savez(DATA_P3 / "mfk_unconditional.npz",
              R_grid=R_GRID, mfk_mean=mfk_mean, mfk_std=mfk_std, n_days=n,
              mfk_lo=bands["lo"], mfk_hi=bands["hi"])
 
