@@ -18,11 +18,12 @@ invariant to any p-hat revision.
 
 import numpy as np
 import pandas as pd
-
+from pathlib import Path
+from src.config import get_path, get_return_grid
+from src.phase4.cumulant_premia import cyl_weights
 
 THETA = 2.0
 NW_LAGS = 27
-
 
 def _stars(p):
     if p < 0.01:
@@ -124,15 +125,11 @@ def wedge_table(per_venue, R_grid, nw_lags=NW_LAGS):
     return pd.DataFrame(rows), len(common)
 
 def run_cl24_regional():
-    from pathlib import Path
-    from src.config import get_path, get_return_grid
-    from src.phase4.cumulant_premia import cyl_weights
-
     R_grid = get_return_grid()
-    CLEAN_DIR = Path(get_path("cleaned_cme")).parent
-    COND_DIR = CLEAN_DIR.parent / "conditioning"
     DATA_P1 = get_path("data_phase1")
-    TAB_DIR = Path("results") / "phase4" / "tables"
+    DATA_P4 = get_path("data_phase4")
+    RES_P4 = get_path("results_phase4")
+    TAB_DIR = RES_P4 / "tables"
     TAB_DIR.mkdir(parents=True, exist_ok=True)
 
     print("\n" + "=" * 60)
@@ -143,7 +140,7 @@ def run_cl24_regional():
     print(f"  CL20 weights (lambda_1, lambda_2, lambda_3) = "
           f"({lam[0]:+.3f}, {lam[1]:+.3f}, {lam[2]:+.3f})")
 
-    Z = pd.read_parquet(COND_DIR / "Z_crypto.parquet")
+    Z = pd.read_parquet(DATA_P1 / "Z_crypto.parquet")
     Z["date"] = pd.to_datetime(Z["date"])
     Z["tercile"] = pd.qcut(Z["Z_IVS_1"], q=3, labels=["low", "mid", "high"])
     terc_map = Z.set_index("date")["tercile"]
@@ -155,8 +152,7 @@ def run_cl24_regional():
         df = df[df["tau_days"] == 27].sort_values("date")
         dates, rnds = [], []
         for _, row in df.iterrows():
-            q = np.interp(R_grid, np.array(row["returns"]),
-                          np.array(row["density"]), left=0, right=0)
+            q = np.interp(R_grid, np.array(row["returns"]), np.array(row["density"]), left=0, right=0)
             m = np.trapezoid(q, R_grid)
             if m > 0:
                 dates.append(row["date"])

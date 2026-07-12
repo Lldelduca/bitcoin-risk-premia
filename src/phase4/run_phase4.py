@@ -11,22 +11,25 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from pathlib import Path
-from src.config import get_path, SAMPLE
+from src.config import get_path, get_sample_window
 from src.phase1.ssvi import SSVI
 from src.phase4.bkm_moments import (extract_bkm_moments, evaluate_iv_grid, bkm_from_iv_grid)
 from src.phase4.cumulant_premia import (compute_physical_variance, compute_cumulant_premia)
 from src.phase4.cumulant_premia import (compute_cyl_decomposition_table, robustness_over_theta, cyl_weights)
 
-SAMPLE_START = pd.to_datetime(SAMPLE["start_date"])
-SAMPLE_END = pd.to_datetime(SAMPLE["end_date"])
+SAMPLE_START_STR, SAMPLE_END_STR = get_sample_window()
+SAMPLE_START = pd.to_datetime(SAMPLE_START_STR)
+SAMPLE_END = pd.to_datetime(SAMPLE_END_STR)
 
-CLEAN_DIR = Path(get_path("cleaned_cme")).parent
-SURFACES_DIR = CLEAN_DIR.parent / "surfaces"
-COND_DIR = CLEAN_DIR.parent / "conditioning"
-PHASE4_DIR = CLEAN_DIR.parent / "phase4"
-FIG_DIR = Path("results") / "phase4" / "figures"
-TAB_DIR = Path("results") / "phase4" / "tables"
-for d in [PHASE4_DIR, FIG_DIR, TAB_DIR]:
+DATA_P1 = get_path("data_phase1")
+DATA_P4 = get_path("data_phase4")
+RES_P4 = get_path("results_phase4")
+
+FIG_DIR = RES_P4 / "figures"
+TAB_DIR = RES_P4 / "tables"
+
+# Ensure all target folders exist
+for d in [DATA_P4, RES_P4, FIG_DIR, TAB_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 TAU_DAYS = 27
@@ -50,7 +53,7 @@ def load_option_data(venue):
     return df[mask].copy()
 
 def load_ssvi_params():
-    params_path = SURFACES_DIR / "ssvi_params.parquet"
+    params_path = DATA_P1 / "ssvi_params.parquet"
     if not params_path.exists():
         raise FileNotFoundError(
             f"{params_path} not found. Run fit_surfaces first; Phase 4 "
@@ -110,7 +113,7 @@ def extract_bkm_for_venue(venue, df, params):
     return pd.DataFrame(results), pd.DataFrame(sweep_rows)
 
 def load_physical_variance():
-    panel = pd.read_parquet(CLEAN_DIR / "auxiliary_panel.parquet")
+    panel = pd.read_parquet(DATA_P1 / "auxiliary_panel.parquet")
     panel["date"] = pd.to_datetime(panel["date"])
     panel = panel.sort_values("date")
     log_ret = np.log(panel["btc_spot"] / panel["btc_spot"].shift(1))
@@ -141,12 +144,12 @@ def run_phase4():
         all_sweep.append(sweep_df)
     bkm_all = pd.concat(all_bkm, ignore_index=True)
     bkm_all["date"] = pd.to_datetime(bkm_all["date"])
-    bkm_all.to_parquet(PHASE4_DIR / "bkm_moments.parquet", index=False)
+    bkm_all.to_parquet(DATA_P4 / "bkm_moments.parquet", index=False)
     print(f"\n  Saved BKM moments: {len(bkm_all)} day-venue pairs")
 
     sweep_all = pd.concat(all_sweep, ignore_index=True)
     sweep_all["date"] = pd.to_datetime(sweep_all["date"])
-    sweep_all.to_parquet(PHASE4_DIR / "bkm_kappa_sweep.parquet", index=False)
+    sweep_all.to_parquet(DATA_P4 / "bkm_kappa_sweep.parquet", index=False)
 
     # Step 2: physical variance (for VRP diagnostic only)
     print("\n  Computing rolling physical variance (252-day window)...")
@@ -170,11 +173,11 @@ def run_phase4():
     premia_df["date"] = pd.to_datetime(premia_df["date"])
 
     # Tercile labels from Z_crypto
-    Z_crypto = pd.read_parquet(COND_DIR / "Z_crypto.parquet")
+    Z_crypto = pd.read_parquet(DATA_P1 / "Z_crypto.parquet")
     Z_crypto["date"] = pd.to_datetime(Z_crypto["date"])
     Z_crypto["tercile"] = pd.qcut(Z_crypto["Z_IVS_1"], q=3, labels=["low", "mid", "high"])
     premia_df = premia_df.merge(Z_crypto[["date", "tercile"]], on="date", how="left")
-    premia_df.to_parquet(PHASE4_DIR / "cumulant_premia.parquet", index=False)
+    premia_df.to_parquet(DATA_P4 / "cumulant_premia.parquet", index=False)
     print(f"  Saved cumulant premia: {len(premia_df)} rows")
 
     # Step 4: Regime-conditional decomposition tables
@@ -212,7 +215,7 @@ def run_phase4():
     print("\n  Theta robustness sweep (matched days)...")
     bkm_matched = bkm_all[bkm_all["date"].isin(matched_days)]
     rob = robustness_over_theta(bkm_matched[["date", "venue", "V", "W", "X"]], THETA_GRID)
-    rob.to_csv(PHASE4_DIR / "theta_robustness.csv", index=False)
+    rob.to_csv(TAB_DIR / "theta_robustness.csv", index=False)
     print(rob.round(4).to_string(index=False))
 
     # Step 5b: kappa-bound truncation sensitivity (matched days)

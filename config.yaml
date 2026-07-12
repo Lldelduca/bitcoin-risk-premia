@@ -33,6 +33,10 @@ paths:
   results_phase2: "results/phase2"
   data_phase3: "data/phase3"
   results_phase3: "results/phase3"
+  data_phase4: "data/phase4"
+  results_phase4: "results/phase4"
+  data_phase5: "data/phase5"  
+  results_phase5: "results/phase5"
 
 # Filters common to both datasets (applied before dataset-specific filters)
 filters_shared:
