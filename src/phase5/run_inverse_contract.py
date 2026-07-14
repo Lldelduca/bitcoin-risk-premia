@@ -10,18 +10,19 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-from src.config import get_path, get_return_grid, SAMPLE
+from src.config import get_path, get_return_grid, get_sample_window
 from src.phase5.inverse_contract import (contributions_from_density, tilt_to_inverse_measure, predict_inverse_wedge)
 from src.phase3.bootstrap_inference import block_bootstrap_statistic
 
-SURFACES_DIR = Path(get_path("cleaned_cme")).parent.parent / "surfaces"
-COND_DIR = Path(get_path("cleaned_cme")).parent.parent / "conditioning"
-PHASE4_TAB = Path("results") / "phase4" / "tables"
-FIG_DIR = Path("results") / "phase5" / "figures"
-TAB_DIR = Path("results") / "phase5" / "tables"
+# Explicit path updates
+DATA_P1 = get_path("data_phase1")
+DATA_P5 = get_path("data_phase5")
+RES_P5 = get_path("results_phase5")
+
+FIG_DIR = RES_P5 / "figures"
+TAB_DIR = RES_P5 / "tables"
 FIG_DIR.mkdir(parents=True, exist_ok=True)
 TAB_DIR.mkdir(parents=True, exist_ok=True)
-
 
 R_GRID = get_return_grid()
 KAPPA_MAX = 1.5
@@ -33,9 +34,11 @@ KAPPA_BOUND = 1.5
 BOOT_B = 1000
 BOOT_BLOCK = 27
 
+SAMPLE_START_STR, SAMPLE_END_STR = get_sample_window()
+
 def _load_matched_densities():
-    cme = pd.read_parquet(SURFACES_DIR / "rnd_CME_densities.parquet")
-    der = pd.read_parquet(SURFACES_DIR / "rnd_DER_densities.parquet")
+    cme = pd.read_parquet(DATA_P1 / "rnd_CME_densities.parquet")
+    der = pd.read_parquet(DATA_P1 / "rnd_DER_densities.parquet")
     for d in (cme, der):
         d["date"] = pd.to_datetime(d["date"])
     cme = cme[cme["tau_days"] == TAU_DAYS].set_index("date").sort_index()
@@ -55,7 +58,7 @@ def _load_matched_densities():
 def run_inverse_contract():
     print("\n" + "=" * 60)
     print("  Phase 5 extension: Inverse-Contract Numeraire Prediction")
-    print(f"  Window: {SAMPLE['start_date']} -> {SAMPLE['end_date']}")
+    print(f"  Window: {SAMPLE_START_STR} -> {SAMPLE_END_STR}")
     print(f"  theta = {THETA}; kappa bound = {KAPPA_BOUND}; tau = {TAU_DAYS}d")
     print(f"  BKM grid: R in [{R_GRID_WIDE[0]:.3f}, {R_GRID_WIDE[-1]:.3f}] "
           f"({len(R_GRID_WIDE)} pts, |ln R| up to "

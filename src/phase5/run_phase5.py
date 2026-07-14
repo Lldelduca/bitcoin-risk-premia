@@ -11,23 +11,25 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from pathlib import Path
-from src.config import get_path, SAMPLE, get_return_grid
+from src.config import get_path, get_sample_window, get_return_grid
 from src.phase5.cross_venue import (compute_conditional_mfk, run_cumulant_panel_regressions,
-                                         run_matched_difference_regressions)
+                                    run_matched_difference_regressions)
 from src.phase5.cross_venue import (format_regression_table, compute_regional_mfk)
 
-SAMPLE_START = pd.to_datetime(SAMPLE["start_date"])
-SAMPLE_END = pd.to_datetime(SAMPLE["end_date"])
+DATA_P1 = get_path("data_phase1")
+DATA_P4 = get_path("data_phase4")
+DATA_P5 = get_path("data_phase5")
+RES_P5 = get_path("results_phase5")
 
-CLEAN_DIR = Path(get_path("cleaned_cme")).parent
-SURFACES_DIR = CLEAN_DIR.parent / "surfaces"
-COND_DIR = CLEAN_DIR.parent / "conditioning"
-PHASE4_DIR = CLEAN_DIR.parent / "phase4"
-PHASE5_DIR = CLEAN_DIR.parent / "phase5"
-FIG_DIR = Path("results") / "phase5" / "figures"
-TAB_DIR = Path("results") / "phase5" / "tables"
-for d in [PHASE5_DIR, FIG_DIR, TAB_DIR]:
+FIG_DIR = RES_P5 / "figures"
+TAB_DIR = RES_P5 / "tables"
+
+for d in [DATA_P5, RES_P5, FIG_DIR, TAB_DIR]:
     d.mkdir(parents=True, exist_ok=True)
+
+SAMPLE_START_STR, SAMPLE_END_STR = get_sample_window()
+SAMPLE_START = pd.to_datetime(SAMPLE_START_STR)
+SAMPLE_END = pd.to_datetime(SAMPLE_END_STR)
 
 plt.rcParams["figure.figsize"] = (13, 5)
 plt.rcParams["axes.grid"] = True
@@ -43,7 +45,7 @@ def run_phase5():
     print("=" * 60)
 
     # Load tercile labels
-    Z_crypto = pd.read_parquet(COND_DIR / "Z_crypto.parquet")
+    Z_crypto = pd.read_parquet(DATA_P1 / "Z_crypto.parquet")
     Z_crypto["date"] = pd.to_datetime(Z_crypto["date"])
     Z_crypto["tercile"] = pd.qcut(Z_crypto["Z_IVS_1"], q=3, labels=["low", "mid", "high"])
 
@@ -51,8 +53,8 @@ def run_phase5():
     print("\n  Component 1: Conditional MFK by volatility tercile...")
 
     mfk_results, psi_df = compute_conditional_mfk(
-        rnd_cme_path=SURFACES_DIR / "rnd_CME_densities.parquet",
-        rnd_der_path=SURFACES_DIR / "rnd_DER_densities.parquet",
+        rnd_cme_path=DATA_P1 / "rnd_CME_densities.parquet",
+        rnd_der_path=DATA_P1 / "rnd_DER_densities.parquet",
         tercile_labels=Z_crypto[["date", "tercile"]],
         tau_days=27,
         R_grid=R_GRID,
@@ -63,14 +65,14 @@ def run_phase5():
               f"peak Ψ = {data['mean_psi'].max():.4f}, "
               f"min Ψ = {data['mean_psi'].min():.4f}")
 
-    psi_df.to_parquet(PHASE5_DIR / "conditional_mfk.parquet")
+    psi_df.to_parquet(DATA_P5 / "conditional_mfk.parquet")
 
     _plot_conditional_mfk(mfk_results)
 
     # Component 2: Venue-wedge regressions
     print("\n  Component 2: Cumulant premium regressions...")
 
-    premia = pd.read_parquet(PHASE4_DIR / "cumulant_premia.parquet")
+    premia = pd.read_parquet(DATA_P4 / "cumulant_premia.parquet")
     premia["date"] = pd.to_datetime(premia["date"])
 
     # Z_crypto as regressors (standardized)
@@ -134,7 +136,7 @@ def run_phase5():
         psi_df, R_GRID, tercile_col="tercile",
     )
 
-    regional_df.to_parquet(PHASE5_DIR / "regional_mfk.parquet")
+    regional_df.to_parquet(DATA_P5 / "regional_mfk.parquet")
     regional_summary.to_csv(TAB_DIR / "regional_mfk_summary.csv", index=False)
 
     print(regional_summary.round(4).to_string(index=False))

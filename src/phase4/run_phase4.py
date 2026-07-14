@@ -113,7 +113,7 @@ def extract_bkm_for_venue(venue, df, params):
     return pd.DataFrame(results), pd.DataFrame(sweep_rows)
 
 def load_physical_variance():
-    panel = pd.read_parquet(DATA_P1 / "auxiliary_panel.parquet")
+    panel = pd.read_parquet(get_path("cleaned_auxiliary"))
     panel["date"] = pd.to_datetime(panel["date"])
     panel = panel.sort_values("date")
     log_ret = np.log(panel["btc_spot"] / panel["btc_spot"].shift(1))

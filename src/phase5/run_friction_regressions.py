@@ -22,19 +22,21 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import statsmodels.api as sm
 from pathlib import Path
-from src.config import get_path, get_return_grid, SAMPLE
+from src.config import get_path, get_return_grid, get_sample_window
 
-CLEAN_DIR = Path(get_path("cleaned_cme")).parent
-DATA_DIR = Path(get_path("cleaned_cme")).parent.parent
-PHASE4_TAB = Path("results") / "phase4" / "tables"
-FIG_DIR = Path("results") / "phase5" / "figures"
-TAB_DIR = Path("results") / "phase5" / "tables"
+DATA_P4 = get_path("data_phase4")
+DATA_P5 = get_path("data_phase5")
+RES_P5 = get_path("results_phase5")
+
+FIG_DIR = RES_P5 / "figures"
+TAB_DIR = RES_P5 / "tables"
 FIG_DIR.mkdir(parents=True, exist_ok=True)
 TAB_DIR.mkdir(parents=True, exist_ok=True)
 
 NW_LAGS = 27
-SAMPLE_END = pd.to_datetime(SAMPLE["end_date"])
-SAMPLE_START = pd.to_datetime(SAMPLE["start_date"])
+SAMPLE_START_STR, SAMPLE_END_STR = get_sample_window()
+SAMPLE_START = pd.to_datetime(SAMPLE_START_STR)
+SAMPLE_END = pd.to_datetime(SAMPLE_END_STR)
 
 def _annualize(level_basis, tau_years):
     return level_basis / tau_years
@@ -45,9 +47,8 @@ def build_cme_basis():
     if "tau" not in cme.columns:
         cme["tau"] = (pd.to_datetime(cme["expiration"]) - cme["date"]).dt.days / 365.25
 
-    aux = pd.read_parquet(CLEAN_DIR / "auxiliary_panel.parquet")
-    aux["date"] = pd.to_datetime(aux["date"])
-    spot = aux[["date", "btc_spot"]].dropna()
+    spot = pd.read_parquet(get_path("cleaned_auxiliary"))[["date", "btc_spot"]].dropna()
+    spot["date"] = pd.to_datetime(spot["date"])
 
     fwd = (cme[["date", "expiration", "tau", "futuresettlementprice"]]
            .dropna(subset=["futuresettlementprice"])
@@ -66,18 +67,12 @@ def build_cme_basis():
     return basis
 
 def load_deribit_funding():
-    path = CLEAN_DIR / "funding_deribit.parquet"
-    if not path.exists():
-        raise FileNotFoundError(
-            f"{path} not found — re-run funding_diff.py (patched to save the "
-            f"standalone Deribit funding before the Hyperliquid inner join).")
-    f = pd.read_parquet(path)
+    f = pd.read_parquet(get_path("cleaned_dir") / "funding_deribit.parquet")
     f["date"] = pd.to_datetime(f["date"])
-    return f[["date", "funding_der_annual"]].rename(
-        columns={"funding_der_annual": "der_funding"}).dropna().sort_values("date")
+    return f[["date", "funding_der_annual"]].rename(columns={"funding_der_annual": "der_funding"}).dropna().sort_values("date")
 
 def build_wedge():
-    premia = pd.read_parquet(DATA_DIR / "phase4" / "cumulant_premia.parquet")
+    premia = pd.read_parquet(DATA_P4 / "cumulant_premia.parquet")
     premia["date"] = pd.to_datetime(premia["date"])
     wide = premia.pivot_table(index="date", columns="venue",
                               values=["Pi_2", "Pi_3", "Pi_4"])
@@ -101,7 +96,7 @@ def _fit(y, Xcols_df, names):
 def run_friction_regressions():
     print("\n" + "=" * 60)
     print("  Phase 5 extension 2: Friction-proxy regressions")
-    print(f"  Window: {SAMPLE['start_date']} -> {SAMPLE['end_date']} "
+    print(f"  Window: {SAMPLE_START_STR} -> {SAMPLE_END_STR} "
           f"(common, CME-bounded)")
     print("=" * 60)
 
