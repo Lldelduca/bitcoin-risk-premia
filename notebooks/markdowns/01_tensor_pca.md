@@ -182,7 +182,6 @@ for r in range(R):
     axes[r].axhline(0, color='black', linewidth=0.4)
     axes[r].set_ylabel(f'Z_IVS_{r+1}')
     axes[r].axvline(pd.Timestamp('2022-11-08'), color='gray', linestyle=':', alpha=0.5)
-    axes[r].axvline(pd.Timestamp('2024-01-10'), color='red', linestyle='--', alpha=0.5)
 
 axes[-1].set_xlabel('Date')
 axes[0].set_title('Temporal mode: Z^{IVS}_t')

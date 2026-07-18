@@ -201,82 +201,6 @@ for venue in ['CME', 'DER']:
 
 Visualize fitted IV surfaces on a calm day and a stress day for each venue.
 
-
-```python
-import sys
-from pathlib import Path
-
-project_root = Path.cwd().resolve().parents[0] 
-
-if str(project_root) not in sys.path:
-    sys.path.append(str(project_root))
-
-from src.phase1.ssvi import SSVI
-```
-
-
-```python
-def plot_fitted_surface(df_venue, venue, target_date, ax):
-    """Fits and plots the SSVI surface for a single (venue, date)."""
-    target_date = pd.Timestamp(target_date)
-    df_day = df_venue[df_venue['date'] == target_date]
-    if df_day.empty:
-        ax.set_title(f'{venue} — {target_date.date()} (no data)')
-        return
-    
-    try:
-        ssvi = SSVI(df_day, venue=venue, date=target_date)
-        ssvi.fit()
-        metrics = ssvi.evaluate_fit()
-    except Exception as e:
-        ax.set_title(f'{venue} — {target_date.date()} (fit failed: {e})')
-        return
-    
-    # Plot observed vs fitted per maturity slice
-    Ts = ssvi.res['maturities']
-    colors = plt.cm.viridis(np.linspace(0.2, 0.9, len(Ts)))
-    
-    for j, T in enumerate(Ts):
-        mask = df_day['tau'] == T
-        k_obs = df_day.loc[mask, 'log_moneyness'].values
-        iv_obs = df_day.loc[mask, 'impliedvolatility'].values * 100
-        ax.scatter(k_obs, iv_obs, color=colors[j], s=15, alpha=0.7, zorder=3)
-        
-        # Fitted curve
-        k_grid = np.linspace(k_obs.min() - 0.05, k_obs.max() + 0.05, 100)
-        theta = ssvi.res['theta'][T]
-        phi = ssvi._phi_power_law(theta, ssvi.res['eta'][T], ssvi.res['gamma'][T])
-        w_fit = ssvi._ssvi_total_variance(k_grid, theta, ssvi.res['rho'][T], phi)
-        iv_fit = np.sqrt(np.maximum(w_fit, 0) / T) * 100
-        dte = round(T * 365.25)
-        ax.plot(k_grid, iv_fit, color=colors[j], linewidth=1.2,
-                label=f'τ={dte}d')
-    
-    ax.set_xlabel('κ = log(K/F)')
-    ax.set_ylabel('IV (%)')
-    ax.set_title(f"{venue} — {target_date.date()} (RMSE={metrics['rmse']*100:.2f}%)")
-    ax.legend(fontsize=7, ncol=2)
-
-# Pick representative dates: one calm, one stressed
-calm_date = '2021-07-15'   # Mid-2021, relatively calm
-stress_date = '2022-11-09' # Day after FTX collapse
-
-fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-plot_fitted_surface(cme, 'CME', calm_date, axes[0, 0])
-plot_fitted_surface(cme, 'CME', stress_date, axes[0, 1])
-plot_fitted_surface(der, 'DER', calm_date, axes[1, 0])
-plot_fitted_surface(der, 'DER', stress_date, axes[1, 1])
-plt.tight_layout()
-plt.savefig(FIG_DIR / 'fig_ssvi_sample_surfaces.png', dpi=150)
-plt.show()
-```
-
-
-    
-![png](01_ssvi_rnd_files/01_ssvi_rnd_11_0.png)
-    
-
-
 #### 5. Fitting Success Rate and Skip Analysis
 
 
@@ -369,6 +293,50 @@ plt.show()
 
 
     
+![png](01_ssvi_rnd_files/01_ssvi_rnd_13_0.png)
+    
+
+
+#### BL Normalization Constant Over Time (appendix diagnostic)
+
+The Breeden-Litzenberger density is renormalized once after GPD tail attachment. The renormalization constant (`mass_renorm`, the raw integral divided out at the tail-attachment stage) should sit near one; persistent deviations would signal mass leakage in the extraction. Reported for the 27-day headline maturity; the mean/min/max row feeds the one-line appendix table note.
+
+
+```python
+fig, ax = plt.subplots(figsize=(13, 4.5))
+norm_stats = {}
+for venue, color in [('CME', 'C0'), ('DER', 'C1')]:
+    s = pd.read_parquet(DATA_P1 / f'rnd_{venue}_summary.parquet')
+    s['date'] = pd.to_datetime(s['date'])
+    s27 = s[s['tau_days'] == 27].sort_values('date')
+    ax.plot(s27['date'], s27['mass_renorm'], lw=0.7, color=color, alpha=0.8, label=venue)
+    norm_stats[venue] = {
+        'mean': s27['mass_renorm'].mean(),
+        'min': s27['mass_renorm'].min(),
+        'max': s27['mass_renorm'].max(),
+        'frac_within_2pct': (s27['mass_renorm'].sub(1).abs() < 0.02).mean(),
+    }
+ax.axhline(1.0, color='black', lw=0.6)
+ax.set_ylabel('BL normalization constant')
+ax.set_xlabel('Date')
+ax.set_title('RND Normalization Constant Over Time (27-day maturity)')
+ax.legend()
+plt.tight_layout()
+plt.savefig(FIG_DIR / 'fig_bl_normalization_constant.png', dpi=150)
+plt.show()
+
+norm_df = pd.DataFrame(norm_stats).T.round(4)
+print(norm_df.to_string())
+norm_df.to_csv(TAB_DIR / 'bl_normalization_summary.csv')
+```
+
+
+    
 ![png](01_ssvi_rnd_files/01_ssvi_rnd_15_0.png)
     
 
+
+           mean     min     max  frac_within_2pct
+    CME  0.9987  0.9930  1.0001               1.0
+    DER  0.9985  0.9923  1.0001               1.0
+    

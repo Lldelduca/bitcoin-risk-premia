@@ -1,24 +1,37 @@
 ```python
-import os
-import numpy as np
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
-from IPython.display import display
+import sys
 
-# Paths
-PROJECT_ROOT = Path(os.getcwd()).parent 
-DATA_DIR = PROJECT_ROOT / "data"
-PHASE4_DIR = DATA_DIR / "phase4"
-FIG_DIR = PROJECT_ROOT / "results" / "phase4" / "figures"
-TAB_DIR = PROJECT_ROOT / "results" / "phase4" / "tables"
+project_root = Path.cwd().parent
+if str(project_root) not in sys.path:
+    sys.path.append(str(project_root))
+```
+
+
+```python
+from src.config import get_path, get_sample_window
+
+plt.rcParams['figure.figsize'] = (12, 5)
+plt.rcParams['axes.grid'] = True
+plt.rcParams['grid.alpha'] = 0.3
+
+DATA_P4 = get_path("data_phase4")
+RES_P4 = get_path("results_phase4")
+FIG_DIR = RES_P4 / "figures"
+TAB_DIR = RES_P4 / "tables"
 
 # Load precomputed outputs
-bkm = pd.read_parquet(PHASE4_DIR / "bkm_moments.parquet")
-premia = pd.read_parquet(PHASE4_DIR / "cumulant_premia.parquet")
-decomp = pd.read_csv(TAB_DIR / "cyl_decomposition.csv")
-theta_rob = pd.read_csv(PHASE4_DIR / "theta_robustness.csv")
+bkm = pd.read_parquet(DATA_P4 / "bkm_moments.parquet")
+premia = pd.read_parquet(DATA_P4 / "cumulant_premia.parquet")
+decomp_matched = pd.read_csv(TAB_DIR / "cyl_decomposition_matched.csv")  # headline
+decomp_all = pd.read_csv(TAB_DIR / "cyl_decomposition.csv")              # supplementary
+theta_rob = pd.read_csv(RES_P4 / "tables" / "theta_robustness.csv")
 moment_summary = pd.read_csv(TAB_DIR / "moment_summary.csv", header=[0, 1], index_col=0)
+bkm["date"] = pd.to_datetime(bkm["date"])
+premia["date"] = pd.to_datetime(premia["date"])
 
 bkm["date"] = pd.to_datetime(bkm["date"])
 premia["date"] = pd.to_datetime(premia["date"])
@@ -28,7 +41,6 @@ print(f"  CME: {(bkm['venue']=='CME').sum()} days")
 print(f"  DER: {(bkm['venue']=='DER').sum()} days")
 print(f"Cumulant premia: {len(premia)} rows")
 print(f"  Date range: {premia['date'].min().date()} -> {premia['date'].max().date()}")
-
 ```
 
     BKM moments: 1946 day-venue pairs
@@ -52,7 +64,6 @@ print(f"\nMatched CME-DER days: {len(matched)}")
 for col in ["var_Q", "skew_Q", "kurt_Q"]:
     rho = matched[[f"{col}_cme", f"{col}_der"]].corr().iloc[0, 1]
     print(f"  Cross-venue correlation ({col}): rho = {rho:.3f}")
-
 ```
 
 
@@ -128,8 +139,8 @@ for col in ["var_Q", "skew_Q", "kurt_Q"]:
       <td>0.0297</td>
       <td>-1.0051</td>
       <td>0.5152</td>
-      <td>9.3175</td>
-      <td>2.6795</td>
+      <td>9.3185</td>
+      <td>2.6815</td>
       <td>0.0506</td>
       <td>0.0308</td>
       <td>0.0176</td>
@@ -146,7 +157,7 @@ for col in ["var_Q", "skew_Q", "kurt_Q"]:
       <td>-0.9959</td>
       <td>0.5329</td>
       <td>9.1733</td>
-      <td>2.6079</td>
+      <td>2.6080</td>
       <td>0.0558</td>
       <td>0.0345</td>
       <td>0.0205</td>
@@ -165,7 +176,7 @@ for col in ["var_Q", "skew_Q", "kurt_Q"]:
     Matched CME-DER days: 624
       Cross-venue correlation (var_Q): rho = 0.964
       Cross-venue correlation (skew_Q): rho = 0.853
-      Cross-venue correlation (kurt_Q): rho = 0.791
+      Cross-venue correlation (kurt_Q): rho = 0.792
     
 
 #### 2. Risk-Neutral Moment Time Series
@@ -189,12 +200,11 @@ axes[2].legend(loc="upper right")
 axes[2].set_xlabel("Date")
 plt.tight_layout()
 plt.show()
-
 ```
 
 
     
-![png](07_moment_decomposition_files/07_moment_decomposition_4_0.png)
+![png](04_moment_decomposition_files/04_moment_decomposition_5_0.png)
     
 
 
@@ -202,17 +212,177 @@ plt.show()
 
 
 ```python
-display(decomp.round(4))
-
-print("\n=== Unconditional shares ===")
-uncond = decomp[decomp["regime"] == "unconditional"]
+print("=== HEADLINE: matched-day sample (thesis numbers) ===")
+display(decomp_matched.round(4))
+uncond = decomp_matched[decomp_matched["regime"] == "unconditional"]
 for _, row in uncond.iterrows():
     print(f"  {row['venue']}: var {row['share_var']:.1%}, "
           f"skew {row['share_skew']:.1%}, kurt {row['share_kurt']:.1%} "
           f"| total 27d = {row['lb_total']:.4f} "
           f"(ann. {100*row['lb_total']*365/27:.0f}%)")
 
+print("\n=== Supplementary: all available days per venue ===")
+display(decomp_all[decomp_all["regime"] == "unconditional"].round(4))
 ```
+
+    === HEADLINE: matched-day sample (thesis numbers) ===
+    
+
+
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>venue</th>
+      <th>regime</th>
+      <th>n_days</th>
+      <th>Pi_2</th>
+      <th>Pi_3</th>
+      <th>Pi_4</th>
+      <th>lb_total</th>
+      <th>share_var</th>
+      <th>share_skew</th>
+      <th>share_kurt</th>
+      <th>mean_vrp</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>CME</td>
+      <td>unconditional</td>
+      <td>624</td>
+      <td>0.0504</td>
+      <td>0.0174</td>
+      <td>0.0291</td>
+      <td>0.0969</td>
+      <td>0.5200</td>
+      <td>0.1798</td>
+      <td>0.3002</td>
+      <td>0.0119</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>DER</td>
+      <td>unconditional</td>
+      <td>624</td>
+      <td>0.0540</td>
+      <td>0.0194</td>
+      <td>0.0324</td>
+      <td>0.1057</td>
+      <td>0.5106</td>
+      <td>0.1834</td>
+      <td>0.3060</td>
+      <td>0.0153</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>CME</td>
+      <td>low</td>
+      <td>224</td>
+      <td>0.0257</td>
+      <td>0.0053</td>
+      <td>0.0074</td>
+      <td>0.0384</td>
+      <td>0.6689</td>
+      <td>0.1388</td>
+      <td>0.1923</td>
+      <td>-0.0033</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>CME</td>
+      <td>mid</td>
+      <td>193</td>
+      <td>0.0456</td>
+      <td>0.0144</td>
+      <td>0.0210</td>
+      <td>0.0810</td>
+      <td>0.5635</td>
+      <td>0.1776</td>
+      <td>0.2589</td>
+      <td>0.0073</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>CME</td>
+      <td>high</td>
+      <td>207</td>
+      <td>0.0818</td>
+      <td>0.0335</td>
+      <td>0.0604</td>
+      <td>0.1757</td>
+      <td>0.4656</td>
+      <td>0.1906</td>
+      <td>0.3438</td>
+      <td>0.0319</td>
+    </tr>
+    <tr>
+      <th>5</th>
+      <td>DER</td>
+      <td>low</td>
+      <td>224</td>
+      <td>0.0275</td>
+      <td>0.0062</td>
+      <td>0.0087</td>
+      <td>0.0424</td>
+      <td>0.6476</td>
+      <td>0.1468</td>
+      <td>0.2056</td>
+      <td>-0.0017</td>
+    </tr>
+    <tr>
+      <th>6</th>
+      <td>DER</td>
+      <td>mid</td>
+      <td>193</td>
+      <td>0.0486</td>
+      <td>0.0156</td>
+      <td>0.0229</td>
+      <td>0.0871</td>
+      <td>0.5579</td>
+      <td>0.1787</td>
+      <td>0.2633</td>
+      <td>0.0102</td>
+    </tr>
+    <tr>
+      <th>7</th>
+      <td>DER</td>
+      <td>high</td>
+      <td>207</td>
+      <td>0.0877</td>
+      <td>0.0372</td>
+      <td>0.0667</td>
+      <td>0.1916</td>
+      <td>0.4577</td>
+      <td>0.1941</td>
+      <td>0.3482</td>
+      <td>0.0375</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+
+      CME: var 52.0%, skew 18.0%, kurt 30.0% | total 27d = 0.0969 (ann. 131%)
+      DER: var 51.1%, skew 18.3%, kurt 30.6% | total 27d = 0.1057 (ann. 143%)
+    
+    === Supplementary: all available days per venue ===
+    
 
 
 <div>
@@ -256,7 +426,7 @@ for _, row in uncond.iterrows():
       <td>0.0176</td>
       <td>0.0295</td>
       <td>0.0977</td>
-      <td>0.5177</td>
+      <td>0.5178</td>
       <td>0.1805</td>
       <td>0.3017</td>
       <td>0.0119</td>
@@ -275,100 +445,10 @@ for _, row in uncond.iterrows():
       <td>0.3135</td>
       <td>0.0151</td>
     </tr>
-    <tr>
-      <th>2</th>
-      <td>CME</td>
-      <td>low</td>
-      <td>225</td>
-      <td>0.0257</td>
-      <td>0.0053</td>
-      <td>0.0074</td>
-      <td>0.0384</td>
-      <td>0.6694</td>
-      <td>0.1385</td>
-      <td>0.1922</td>
-      <td>-0.0033</td>
-    </tr>
-    <tr>
-      <th>3</th>
-      <td>CME</td>
-      <td>mid</td>
-      <td>195</td>
-      <td>0.0456</td>
-      <td>0.0144</td>
-      <td>0.0210</td>
-      <td>0.0809</td>
-      <td>0.5628</td>
-      <td>0.1778</td>
-      <td>0.2595</td>
-      <td>0.0069</td>
-    </tr>
-    <tr>
-      <th>4</th>
-      <td>CME</td>
-      <td>high</td>
-      <td>209</td>
-      <td>0.0824</td>
-      <td>0.0341</td>
-      <td>0.0615</td>
-      <td>0.1779</td>
-      <td>0.4630</td>
-      <td>0.1915</td>
-      <td>0.3455</td>
-      <td>0.0321</td>
-    </tr>
-    <tr>
-      <th>5</th>
-      <td>DER</td>
-      <td>low</td>
-      <td>257</td>
-      <td>0.0272</td>
-      <td>0.0061</td>
-      <td>0.0085</td>
-      <td>0.0419</td>
-      <td>0.6502</td>
-      <td>0.1458</td>
-      <td>0.2039</td>
-      <td>-0.0015</td>
-    </tr>
-    <tr>
-      <th>6</th>
-      <td>DER</td>
-      <td>mid</td>
-      <td>254</td>
-      <td>0.0482</td>
-      <td>0.0155</td>
-      <td>0.0229</td>
-      <td>0.0866</td>
-      <td>0.5566</td>
-      <td>0.1791</td>
-      <td>0.2643</td>
-      <td>0.0096</td>
-    </tr>
-    <tr>
-      <th>7</th>
-      <td>DER</td>
-      <td>high</td>
-      <td>254</td>
-      <td>0.0861</td>
-      <td>0.0359</td>
-      <td>0.0639</td>
-      <td>0.1859</td>
-      <td>0.4632</td>
-      <td>0.1930</td>
-      <td>0.3439</td>
-      <td>0.0363</td>
-    </tr>
   </tbody>
 </table>
 </div>
 
-
-    
-    === Unconditional shares ===
-      CME: var 51.8%, skew 18.1%, kurt 30.2% | total 27d = 0.0977 (ann. 132%)
-      DER: var 50.2%, skew 18.5%, kurt 31.4% | total 27d = 0.1111 (ann. 150%)
-    
 
 
 ```python
@@ -385,12 +465,11 @@ ax.set_title("CL20 Lower-Bound Decomposition (Unconditional, θ = 2)")
 ax.legend()
 plt.tight_layout()
 plt.show()
-
 ```
 
 
     
-![png](07_moment_decomposition_files/07_moment_decomposition_7_0.png)
+![png](04_moment_decomposition_files/04_moment_decomposition_8_0.png)
     
 
 
@@ -401,7 +480,7 @@ plt.show()
 # Tercile decomposition: stacked bar chart
 fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
 for ax, venue in zip(axes, ["CME", "DER"]):
-    t_data = decomp[(decomp["venue"] == venue) & (decomp["regime"] != "unconditional")]
+    t_data = decomp_matched[(decomp_matched["venue"] == venue) & (decomp_matched["regime"] != "unconditional")]
     terciles = ["low", "mid", "high"]
     x = np.arange(3)
     ax.bar(x, t_data.set_index("regime").loc[terciles, "Pi_2"].values,
@@ -422,29 +501,28 @@ print("=== Moment shares by venue and tercile ===")
 for venue in ["CME", "DER"]:
     print(f"\n  {venue}:")
     for regime in ["low", "mid", "high"]:
-        row = decomp[(decomp["venue"] == venue) & (decomp["regime"] == regime)].iloc[0]
+        row = decomp_matched[(decomp_matched["venue"] == venue) & (decomp_matched["regime"] == regime)].iloc[0]
         print(f"    {regime}: var {row['share_var']:.1%}, skew {row['share_skew']:.1%}, "
               f"kurt {row['share_kurt']:.1%} | total = {row['lb_total']:.4f}")
-
 ```
 
 
     
-![png](07_moment_decomposition_files/07_moment_decomposition_9_0.png)
+![png](04_moment_decomposition_files/04_moment_decomposition_10_0.png)
     
 
 
     === Moment shares by venue and tercile ===
     
       CME:
-        low: var 66.9%, skew 13.8%, kurt 19.2% | total = 0.0384
-        mid: var 56.3%, skew 17.8%, kurt 25.9% | total = 0.0809
-        high: var 46.3%, skew 19.2%, kurt 34.5% | total = 0.1779
+        low: var 66.9%, skew 13.9%, kurt 19.2% | total = 0.0384
+        mid: var 56.3%, skew 17.8%, kurt 25.9% | total = 0.0810
+        high: var 46.6%, skew 19.1%, kurt 34.4% | total = 0.1757
     
       DER:
-        low: var 65.0%, skew 14.6%, kurt 20.4% | total = 0.0419
-        mid: var 55.7%, skew 17.9%, kurt 26.4% | total = 0.0866
-        high: var 46.3%, skew 19.3%, kurt 34.4% | total = 0.1859
+        low: var 64.8%, skew 14.7%, kurt 20.6% | total = 0.0424
+        mid: var 55.8%, skew 17.9%, kurt 26.3% | total = 0.0871
+        high: var 45.8%, skew 19.4%, kurt 34.8% | total = 0.1916
     
 
 #### 5. Cumulant Contribution Time Series and Boxplots
@@ -467,12 +545,11 @@ axes[2].set_ylabel(r"$\Pi_{4,t}^j$ (kurtosis)")
 axes[2].set_xlabel("Date")
 plt.tight_layout()
 plt.show()
-
 ```
 
 
     
-![png](07_moment_decomposition_files/07_moment_decomposition_11_0.png)
+![png](04_moment_decomposition_files/04_moment_decomposition_12_0.png)
     
 
 
@@ -497,12 +574,11 @@ for ax, (col, label) in zip(axes, [
 fig.suptitle("Cumulant Premium Contributions by Venue and Volatility Tercile", fontsize=13)
 plt.tight_layout()
 plt.show()
-
 ```
 
 
     
-![png](07_moment_decomposition_files/07_moment_decomposition_12_0.png)
+![png](04_moment_decomposition_files/04_moment_decomposition_13_0.png)
     
 
 
@@ -526,12 +602,11 @@ for ax, (col, label) in zip(axes, [
 fig.suptitle("Cross-Venue RN Moment Agreement (matched days)", fontsize=13)
 plt.tight_layout()
 plt.show()
-
 ```
 
 
     
-![png](07_moment_decomposition_files/07_moment_decomposition_14_0.png)
+![png](04_moment_decomposition_files/04_moment_decomposition_15_0.png)
     
 
 
@@ -555,12 +630,11 @@ for venue in ["CME", "DER"]:
     v = premia[premia["venue"] == venue]["vrp"].dropna()
     print(f"  {venue}: mean = {v.mean():.4f}, std = {v.std():.4f}, "
           f"median = {v.median():.4f}, positive share = {(v > 0).mean():.1%}")
-
 ```
 
 
     
-![png](07_moment_decomposition_files/07_moment_decomposition_15_0.png)
+![png](04_moment_decomposition_files/04_moment_decomposition_16_0.png)
     
 
 
@@ -586,7 +660,6 @@ ax.set_title("CL20 Lower Bound: Sensitivity to Preference Parameter")
 ax.legend()
 plt.tight_layout()
 plt.show()
-
 ```
 
     === Theta Robustness Sweep ===
@@ -636,7 +709,7 @@ plt.show()
       <td>0.0116</td>
       <td>0.0145</td>
       <td>0.0765</td>
-      <td>103.4759</td>
+      <td>103.4653</td>
     </tr>
     <tr>
       <th>1</th>
@@ -662,7 +735,7 @@ plt.show()
       <td>0.0174</td>
       <td>0.0291</td>
       <td>0.0969</td>
-      <td>130.9913</td>
+      <td>130.9770</td>
     </tr>
     <tr>
       <th>3</th>
@@ -688,7 +761,7 @@ plt.show()
       <td>0.0232</td>
       <td>0.0485</td>
       <td>0.1221</td>
-      <td>165.0612</td>
+      <td>165.0423</td>
     </tr>
     <tr>
       <th>5</th>
@@ -710,7 +783,7 @@ plt.show()
 
 
     
-![png](07_moment_decomposition_files/07_moment_decomposition_17_2.png)
+![png](04_moment_decomposition_files/04_moment_decomposition_18_2.png)
     
 
 
@@ -753,3 +826,5 @@ plt.show()
  5. **Theta robustness**: the cross-venue ordering and composition shift are
 
     invariant to the preference parameter.
+
+*(Note: the bullet numbers above are hard-coded prose and must be re-read against the post-rerun CSVs before quoting - the tables above are the source of truth.)*
