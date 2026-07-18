@@ -1,20 +1,13 @@
 """
 Master Pipeline Runner — Bitcoin Risk Premia Across Venues.
 
-Runs the full empirical pipeline in dependency order with checkpoints, wall-clock timing, and verification guards at each stage. 
-Designed to be kicked off once and left to run; each phase prints a clear banner. A supervisor reproducing the thesis runs:
-
-    python main.py
-
-and then executes the notebooks in notebooks/ top to bottom.
-
 Usage:
     python main.py                    # full pipeline, all phases
     python main.py --from 1a          # resume from Phase 1a onward
     python main.py --only 0b 4        # run only Phase 0b and Phase 4
     python main.py --skip 0a          # skip the long API scraping step
     python main.py --skip-bootstrap   # skip Phase 3b (and therefore 3c)
-    python main.py --skip-diagnostics # skip Phases 2b and 2c (appendix only)
+    python main.py --skip-diagnostics # skip Phases 2b, 2c, 3d (appendix only)
     python main.py --bootstrap-B 200  # bootstrap replicates (default 200)
     python main.py --bootstrap-workers 6
 
@@ -28,14 +21,20 @@ Phase dependency graph:
     2   Physical density + EP decomp    (reads: RNDs, spot prices)
     2b  NB-sweep diagnostic [appendix]  (reads: Phase 2 loaders)
     2c  Grid-sensitivity diag [appendix](reads: RNDs, spot prices)
+    2d  Kernel hump significance test   (reads: RNDs, spot prices)
     3   Conditional pricing kernel      (reads: RNDs, p-hat, Z vectors)
     3b  Kernel bootstrap [heavy]        (reads: Phase 3 theta, RNDs, Z)
     3c  Joint regime test               (reads: Phase 3b draws)
+    3d  Kernel robustness (KDE tilt)    (reads: Phase 2 densities, Phase 3 theta)
     4   BKM / CL20 decomposition        (reads: ssvi_params, Z vectors)
     4b  CL24 regional decomposition     (reads: RNDs, Z vectors; Q-only)
     5   Cross-venue analysis            (reads: RNDs, cumulant premia, Z)
     5b  Friction-proxy regressions      (reads: premia, basis, funding)
     5c  Inverse-contract extension      (reads: RNDs, cumulant premia)
+    5d  No-trade band test              (reads: cumulant premia, cleaned options)
+    5e  Async-orthogonality check       (reads: raw Deribit trades, premia)
+    5f  Wedge term structure            (reads: RNDs at tau 14/27/60)
+    5g  Stress-event dynamics           (reads: cumulant premia)
 """
 
 import argparse
@@ -52,7 +51,6 @@ from src.config import get_path
 
 LOG_DIR = Path("results") / "pipeline_logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
-
 
 class PhaseTimer:
 
@@ -221,6 +219,14 @@ def phase_2b_nb_sweep():
     print(f"  [checkpoint] published bounds bind in "
           f"{int(bind['van_any_bound_binds'].sum())}/{len(bind)} NB settings")
 
+    from src.phase2.run_ep_diff_ci import run_ep_diff_ci
+    run_ep_diff_ci()
+    _check_file(tab / "ep_diff_ci.csv", "EP diff CI (paired bootstrap)")
+    d = pd.read_csv(tab / "ep_diff_ci.csv")
+    for _, r in d.iterrows():
+        print(f"  [checkpoint] {r['venue']} enhanced-vanilla EP diff: "
+              f"{r['mean_diff']:+.5f} [{r['ci_lo']:+.5f}, {r['ci_hi']:+.5f}] "
+              f"(p = {r['p_two_sided']:.3f})")
 
 def phase_2c_grid_sensitivity():
     """Appendix diagnostic: integration-window dependence of the EP total."""
@@ -234,7 +240,6 @@ def phase_2c_grid_sensitivity():
         print(f"  [checkpoint] {r['venue']} enhanced on [0.30, 2.60]: "
               f"{r['total_ep']:+.4f}, gap closed "
               f"{r['gap_closed_vs_headline']:+.1%}")
-
 
 def phase_3_kernel():
     from src.phase3.run_phase3 import run_phase3
@@ -255,7 +260,6 @@ def phase_3_kernel():
             print(f"  [WARN] {venue} npz lacks tercile_labels — pre-fix run?")
     _check_file(phase3_dir / "mfk_unconditional.npz", "MFK (bootstrap bands)")
 
-
 def phase_3b_kernel_bootstrap(B=200, workers=6):
     from src.phase3.run_phase3_bootstrap import run_bootstrap
     run_bootstrap(venues=["CME", "DER"], spec_name="crypto", B=B, workers=workers)
@@ -267,7 +271,6 @@ def phase_3b_kernel_bootstrap(B=200, workers=6):
         print(f"    {r['venue']:>4s} {r['tercile']:>4s}: "
               f"c = {r['point']:+.3f} [{r['ci_lo']:+.3f}, {r['ci_hi']:+.3f}]  "
               f"P(c<0) = {r['frac_negative']:.3f}")
-
 
 def phase_3c_joint_regime_test():
     """Post-process: joint Wald tests + curvature-at-money from 3b draws."""
@@ -287,6 +290,16 @@ def phase_3c_joint_regime_test():
               f"Wald = {r.get('wald_stat', float('nan')):.2f}, "
               f"p = {r.get('p_value', float('nan')):.4f}")
 
+def phase_3d_kde_tilt():
+    from src.phase3.run_phase3_kde_robustness import run_kde_tilt_robustness
+    run_kde_tilt_robustness()
+    tab = Path("results") / "phase3" / "tables"
+    _check_file(tab / "kde_tilt_robustness.csv", "KDE-tilt robustness")
+    t = pd.read_csv(tab / "kde_tilt_robustness.csv")
+    n_agree = int(t["curv_sign_agrees"].sum())
+    print(f"  [checkpoint] curvature-at-money sign agreement: "
+          f"{n_agree}/{len(t)} venue-tercile cells; "
+          f"max |delta| = {t['curv_delta'].abs().max():.3f}")
 
 def phase_4_bkm():
     from src.phase4.run_phase4 import run_phase4
@@ -302,7 +315,6 @@ def phase_4_bkm():
             print(f"  [checkpoint] {venue} kurtosis share = "
                   f"{row.iloc[0]['share_kurt']:.3f}")
 
-
 def phase_4b_cl24_regional():
     """CL24 Table-4 analog: regional decomposition of the CL20 bound."""
     from src.phase4.run_cl24_regional import run_cl24_regional
@@ -314,7 +326,6 @@ def phase_4b_cl24_regional():
     for _, r in w[w["order"] == "LB"].iterrows():
         print(f"  [checkpoint] LB wedge {r['region']:>6s}: "
               f"{r['wedge']:+.5f} (t = {r['t_stat']:+.2f}){r['stars'] or ''}")
-
 
 def phase_5_cross_venue():
     from src.phase5.run_phase5 import run_phase5
@@ -329,13 +340,11 @@ def phase_5_cross_venue():
         print(f"    {row['dep_var']}: beta = {row['coef']:+.5f} "
               f"(t = {row['t_stat']:+.3f}){row.get('stars', '')}")
 
-
 def phase_5b_frictions():
     from src.phase5.run_friction_regressions import run_friction_regressions
     run_friction_regressions()
     tab = Path("results") / "phase5" / "tables"
     _check_file(tab / "friction_regressions.csv", "Friction-proxy regressions")
-
 
 def phase_5c_inverse_contract():
     from src.phase5.run_inverse_contract import run_inverse_contract
@@ -349,10 +358,74 @@ def phase_5c_inverse_contract():
         print(f"  [checkpoint] sign agreement measured vs predicted: "
               f"{agree}/{len(w)}")
 
+def phase_5d_notrade_band():
+    """Extension 2: is the daily variance wedge inside the round-trip
+    transaction-cost band? (limits-to-arbitrage check, cheap)."""
+    from src.phase5.run_notrade_band import run_notrade_band
+    run_notrade_band()
+    tab = Path("results") / "phase5" / "tables"
+    _check_file(tab / "notrade_band_summary.csv", "No-trade band summary")
+    s = pd.read_csv(tab / "notrade_band_summary.csv")
+    r = s[(s.spread_mult == 1.0) & (s.kappa_roundtrip == 2.0)]
+    if len(r):
+        r = r.iloc[0]
+        print(f"  [checkpoint] |wedge| inside round-trip band on "
+              f"{r['frac_inside_band']:.1%} of days "
+              f"(mean band {r['mean_band']:.5f} vs "
+              f"mean |wedge| {r['mean_abs_wedge']:.5f})")
 
-# ---------------------------------------------------------------------------
-# Orchestrator
-# ---------------------------------------------------------------------------
+def phase_5e_async_orthogonality():
+    from src.phase5.run_async_orthogonality import run_async_orthogonality
+    run_async_orthogonality()
+    tab = Path("results") / "phase5" / "tables"
+    _check_file(tab / "async_orthogonality.csv", "Async orthogonality table")
+    a = pd.read_csv(tab / "async_orthogonality.csv")
+    b = a[(a.dep_var == "dPi_2") & (a.regressor == "async_move")]
+    if len(b):
+        r = b.iloc[0]
+        verdict = "orthogonal" if r["p_value"] > 0.10 else "NOT orthogonal"
+        print(f"  [checkpoint] dPi_2 on async_move: beta = {r['coef']:+.4f} "
+              f"(t = {r['t_stat']:+.2f}) -> {verdict}")
+
+def phase_2d_hump_test():
+    """Joint block-bootstrap significance test for the kernel hump on
+    both venues (upgrades the headline claim from figure to finding)."""
+    from src.phase2.run_hump_test import run_hump_test
+    run_hump_test()
+    tab = Path("results") / "phase2" / "tables"
+    _check_file(tab / "hump_test.csv", "Hump significance test")
+    h = pd.read_csv(tab / "hump_test.csv")
+    for _, r in h.iterrows():
+        print(f"  [checkpoint] {r['venue']}: H = {r['H_point']:.3f} "
+              f"[{r['ci_lo']:.3f}, {r['ci_hi']:.3f}], "
+              f"P(monotone) = {r['p_monotone']:.4f}")
+
+def phase_5f_term_structure():
+    """Wedge term structure at tau in {14, 27, 60}: maturity-scaling vs
+    maturity-flat segmentation."""
+    from src.phase5.run_wedge_term_structure import run_wedge_term_structure
+    run_wedge_term_structure()
+    tab = Path("results") / "phase5" / "tables"
+    _check_file(tab / "wedge_term_structure.csv", "Wedge term structure")
+    t = pd.read_csv(tab / "wedge_term_structure.csv")
+    v = t[t["order"] == 2].sort_values("tau_days")
+    line = "; ".join(f"tau={int(r.tau_days)}: {r.wedge:+.5f}"
+                     f"(t={r.t_stat:+.2f}){r.stars}" for _, r in v.iterrows())
+    print(f"  [checkpoint] dPi_2 wedge by maturity: {line}")
+
+def phase_5g_stress_events():
+    """Stress-event dynamics: does the wedge widen in COVID/Terra/FTX
+    windows (limits-to-arbitrage) or stay flat (structural clientele)?"""
+    from src.phase5.run_stress_events import run_stress_events
+    run_stress_events()
+    tab = Path("results") / "phase5" / "tables"
+    _check_file(tab / "stress_event_regressions.csv", "Stress-event table")
+    t = pd.read_csv(tab / "stress_event_regressions.csv")
+    sub = t[(t.dep_var == "dPi_2")
+            & (t.regressor != "const (non-event wedge)")]
+    n_sig = int((sub["p_value"] < 0.05).sum())
+    print(f"  [checkpoint] dPi_2 event dummies significant at 5%: "
+          f"{n_sig}/{len(sub)}")
 
 PHASE_ORDER = [
     ("0a", "Data Scraping (Deribit)",             phase_0a_scraping),
@@ -364,16 +437,21 @@ PHASE_ORDER = [
     ("2",  "Physical Density & EP Decomp",        phase_2_ep),
     ("2b", "NB-Sweep Diagnostic (appendix)",      phase_2b_nb_sweep),
     ("2c", "Grid-Sensitivity Diagnostic (appx)",  phase_2c_grid_sensitivity),
+    ("2d", "Kernel Hump Significance Test",       phase_2d_hump_test),
     ("3",  "Conditional Pricing Kernel",          phase_3_kernel),
     ("3b", "Kernel Bootstrap (heavy)",            None),   # special args
     ("3c", "Joint Regime Test",                   phase_3c_joint_regime_test),
+    ("3d", "Kernel Robustness (KDE tilt, appx)",  phase_3d_kde_tilt),
     ("4",  "BKM / CL20 Decomposition",            phase_4_bkm),
     ("4b", "CL24 Regional Decomposition",         phase_4b_cl24_regional),
     ("5",  "Cross-Venue Analysis",                phase_5_cross_venue),
     ("5b", "Friction-Proxy Regressions",          phase_5b_frictions),
     ("5c", "Inverse-Contract Extension",          phase_5c_inverse_contract),
+    ("5d", "No-Trade Band Test",                  phase_5d_notrade_band),
+    ("5e", "Async-Orthogonality Check",           phase_5e_async_orthogonality),
+    ("5f", "Wedge Term Structure",                phase_5f_term_structure),
+    ("5g", "Stress-Event Dynamics",               phase_5g_stress_events),
 ]
-
 
 def main():
     parser = argparse.ArgumentParser(
@@ -385,7 +463,7 @@ def main():
     parser.add_argument("--skip-bootstrap", action="store_true",
                         help="Skip Phase 3b (Phase 3c then auto-skips)")
     parser.add_argument("--skip-diagnostics", action="store_true",
-                        help="Skip the appendix diagnostics (Phases 2b, 2c)")
+                        help="Skip the appendix diagnostics (Phases 2b, 2c, 3d)")
     parser.add_argument("--bootstrap-B", type=int, default=200)
     parser.add_argument("--bootstrap-workers", type=int, default=6)
     parser.add_argument("--continue-on-error", action="store_true")
@@ -406,7 +484,7 @@ def main():
     if args.skip_bootstrap:
         run_tags.discard("3b")
     if args.skip_diagnostics:
-        run_tags -= {"2b", "2c"}
+        run_tags -= {"2b", "2c", "3d"}
 
     print("\n" + "#" * 70)
     print("#   Bitcoin Risk Premia — Full Pipeline Run".ljust(69) + "#")
@@ -486,6 +564,13 @@ def main():
       (friction_regressions.csv)
   13. Inverse contract: sign agreement count (inverse_contract_wedge.csv)
   14. MFK: tent shape within block-bootstrap bands (fig_mfk_unconditional)
+  15. No-trade band: fraction of days |wedge| inside the round-trip cost
+      band; CME leg quoted, Deribit leg calibrated -> use the break-even
+      framing for Deribit (notrade_band_summary.csv)
+  16. Async orthogonality: beta on async_move insignificant AND alpha
+      reproduces the unconditional wedge (async_orthogonality.csv)
+  17. KDE-tilt: curvature-at-money signs and low/mid/high ranking stable
+      across tilting densities (kde_tilt_robustness.csv)
     """)
     sys.exit(1 if n_fail > 0 else 0)
 

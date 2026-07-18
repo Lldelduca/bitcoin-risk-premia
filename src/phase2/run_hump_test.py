@@ -14,6 +14,7 @@ Monotonicity implies H <= 0; P_boot(H <= 0) is the one-sided p-value. Pointwise 
 m(R) are saved for the figure.
 
 """
+
 import warnings
 import numpy as np
 import pandas as pd
@@ -53,8 +54,9 @@ def hump_statistic(m):
 
 
 def run_hump_test(B=B):
-    TAB = get_path("results_phase2") / "tables"
-    FIG = get_path("results_phase2") / "figures"
+    RES_P2 = get_path("results_phase2")
+    TAB = RES_P2 / "tables"
+    FIG = RES_P2 / "figures"
     DATA = Path(get_path("data_phase2"))
     for d in (TAB, FIG):
         d.mkdir(parents=True, exist_ok=True)
