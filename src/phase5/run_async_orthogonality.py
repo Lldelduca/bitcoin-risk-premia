@@ -108,11 +108,11 @@ def orthogonality_table(wedges: pd.DataFrame, proxies: pd.DataFrame,
     df = df.dropna()
     rows = []
     for dep in [c for c in wedges.columns if c.startswith("dPi_")]:
-        X = sm.add_constant(df[["async_move", "intraday_rv"]].values)
-        res = sm.OLS(df[dep].values, X).fit(
+        X = sm.add_constant(df[["async_move", "intraday_rv"]].values.astype(float))
+        res = sm.OLS(df[dep].values.astype(float), X).fit(
             cov_type="HAC", cov_kwds={"maxlags": nw_lags})
-        # unconditional wedge on the same sample, for the alpha comparison
-        res0 = sm.OLS(df[dep].values,
+
+        res0 = sm.OLS(df[dep].values.astype(float),
                       np.ones((len(df), 1))).fit(
             cov_type="HAC", cov_kwds={"maxlags": nw_lags})
         for name, j in [("const (alpha)", 0), ("async_move", 1),
@@ -152,7 +152,7 @@ def run_async_orthogonality(trades_path=None):
     print("  Asynchronicity Orthogonality Check")
     print("=" * 60)
 
-    # Corrected: Swapped parent climbing for direct data registry lookup
+    # 1) daily wedge from the Phase 4 panel
     panel = pd.read_parquet(get_path("data_phase4") / "cumulant_premia.parquet")
     panel["date"] = pd.to_datetime(panel["date"])
     pi_cols = [c for c in panel.columns

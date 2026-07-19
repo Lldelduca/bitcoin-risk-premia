@@ -134,7 +134,7 @@ def run_notrade_band():
 
     # wedge series from the Phase 4 daily panel
     panel = pd.read_parquet(get_path("data_phase4")
-                            / "cumulant_premia_daily.parquet")
+                            / "cumulant_premia.parquet")
     panel["date"] = pd.to_datetime(panel["date"])
     piv = panel.pivot_table(index="date", columns="venue",
                             values="Pi_2").dropna()
