@@ -22,6 +22,7 @@ Phase dependency graph:
     2b  NB-sweep diagnostic [appendix]  (reads: Phase 2 loaders)
     2c  Grid-sensitivity diag [appendix](reads: RNDs, spot prices)
     2d  Kernel hump significance test   (reads: RNDs, spot prices)
+    2e  BVRP state decomposition        (reads: RNDs, spot prices)
     3   Conditional pricing kernel      (reads: RNDs, p-hat, Z vectors)
     3b  Kernel bootstrap [heavy]        (reads: Phase 3 theta, RNDs, Z)
     3c  Joint regime test               (reads: Phase 3b draws)
@@ -400,6 +401,22 @@ def phase_2d_hump_test():
               f"[{r['ci_lo']:.3f}, {r['ci_hi']:.3f}], "
               f"P(monotone) = {r['p_monotone']:.4f}")
 
+def phase_2e_bvrp():
+    from src.phase2.run_bvrp_decomposition import run_bvrp_decomposition
+    run_bvrp_decomposition()
+    tab = Path("results") / "phase2" / "tables"
+    _check_file(tab / "bvrp_decomposition_summary.csv", "BVRP decomposition")
+    b = pd.read_csv(tab / "bvrp_decomposition_summary.csv")
+    head = b[(b["estimator"] == "almeida")]
+    for _, r in head.iterrows():
+        ci = ""
+        if pd.notna(r.get("ci_lo")) and pd.notna(r.get("ci_hi")):
+            ci = f" [{r['ci_lo']:+.5f}, {r['ci_hi']:+.5f}]"
+        print(f"  [checkpoint] {r['venue']} BVRP (enhanced): "
+              f"{r['total']:+.5f}{ci}  "
+              f"down/mid/up = {r['downside_contrib']:+.5f}/"
+              f"{r['mid_contrib']:+.5f}/{r['upside_contrib']:+.5f}")
+
 def phase_5f_term_structure():
     """Wedge term structure at tau in {14, 27, 60}: maturity-scaling vs
     maturity-flat segmentation."""
@@ -438,6 +455,7 @@ PHASE_ORDER = [
     ("2b", "NB-Sweep Diagnostic (appendix)",      phase_2b_nb_sweep),
     ("2c", "Grid-Sensitivity Diagnostic (appx)",  phase_2c_grid_sensitivity),
     ("2d", "Kernel Hump Significance Test",       phase_2d_hump_test),
+    ("2e", "BVRP State Decomposition",            phase_2e_bvrp),
     ("3",  "Conditional Pricing Kernel",          phase_3_kernel),
     ("3b", "Kernel Bootstrap (heavy)",            None),   # special args
     ("3c", "Joint Regime Test",                   phase_3c_joint_regime_test),
