@@ -2,7 +2,23 @@
 Beason & Schreindorfer (2022) Equity Premium Decomposition.
 
 Computes the equity premium curve, cumulative equity premium, and unconditional pricing kernel for each venue, 
-given the risk-neutral density q^j(R) and the physical density p(R)
+given the risk-neutral and the physical density.
+
+All densities in this pipeline live on a GROSS forward-standardized return grid, R = S_{t+tau} / F_t(tau), with R in [0.40, 2.00].
+
+Beason & Schreindorfer state their decomposition in NET return space over [-1, inf):
+
+    E[R_net] - Rf = integral of R_net * (f(R_net) - f*(R_net)) d R_net
+
+Under the change of variable R_net = R_gross - 1 (unit Jacobian), the image of their integrand on our gross grid is:
+
+    ep(R) = (R - 1) * (p(R) - q(R))
+
+Multiplying by R rather than (R - 1) treats the gross return as if it were the net return. Because
+
+    integral of (R - c) * (p - q) dR
+
+gives the SAME total for any constant c (both densities integrate to one)
 
 """
 
@@ -22,8 +38,8 @@ class EPDecomposition(NamedTuple):
 
 def compute_ep_decomposition(R_grid: np.ndarray, q_R: np.ndarray, p_R: np.ndarray, venue: str = "unknown") -> EPDecomposition:
 
-    # EP curve: (p(R) - q(R)) * R
-    ep = (p_R - q_R) * R_grid
+    # EP curve: (R - 1) * (p(R) - q(R)) Beason-Schreindorfer net-return integrand expressed on the gross grid
+    ep = (p_R - q_R) * (R_grid - 1.0)
 
     # Cumulative EP via trapezoidal quadrature
     cep = np.concatenate([[0.0], cumulative_trapezoid(ep, R_grid)])
