@@ -236,7 +236,7 @@ def run_phase3():
                     "venue": venue, "spec": spec_name,
                     "n_days": result.n_days, "n_params": result.n_params,
                     "kl_total": result.kl_total, "kl_mean": result.kl_mean,
-                    "converged": result.converged,
+                    "converged": result.converged, "grad_inf": result.grad_inf,
                 }
                 for cn in ["b", "c", "d"]:
                     row[f"mean_{cn}"] = coeffs[cn].mean()

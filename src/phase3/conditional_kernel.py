@@ -29,6 +29,7 @@ class ConditionalKernelResult(NamedTuple):
     kl_total: float
     kl_mean: float
     converged: bool
+    grad_inf: float 
     hessian_inv: np.ndarray | None
 
 def _unpack_theta(theta, n_Z):
@@ -151,11 +152,12 @@ def estimate_conditional_kernel(
 
     kl_total = result.fun
     kl_mean = kl_total / T
+    grad_inf = (float(np.max(np.abs(result.jac))) if getattr(result, "jac", None) is not None else float("nan"))
 
     if verbose:
         print(f"    Converged: {result.success}, "
               f"KL total={kl_total:.4f}, KL mean={kl_mean:.6f}")
-        print(f"    Final |grad|_inf = {np.max(np.abs(result.jac)):.2e}")
+        print(f"    Final |grad|_inf = {grad_inf:.2e}")
 
     return ConditionalKernelResult(
         theta=result.x, n_params=n_params, n_days=T, n_Z=n_Z, venue=venue, spec_name=spec_name, kl_total=kl_total,

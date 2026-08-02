@@ -27,7 +27,7 @@ from src.phase3.run_phase3 import (load_daily_rnds_from_parquet, load_conditioni
 
 R_GRID = get_return_grid()
 BLOCK_LENGTH = 27
-DEFAULT_B = 200
+DEFAULT_B = 10000
 MAX_ITER_REPLICATE = 3000
 
 def _tercile_mean_states(Z_matrix, tercile_labels):
@@ -138,9 +138,8 @@ def run_bootstrap(venues, spec_name, B, workers, ci=0.95):
                 if (i + 1) % 25 == 0:
                     print(f"    {i+1}/{B} done")
 
-        draws = pd.DataFrame(rows)
-        draws.to_parquet(DATA_P3 / f"phase3_bootstrap_draws_{venue}_{spec_name}.parquet",
-                         index=False)
+        draws = pd.DataFrame(rows).sort_values("seed").reset_index(drop=True)
+        draws.to_parquet(DATA_P3 / f"phase3_bootstrap_draws_{venue}_{spec_name}.parquet", index=False)
         n_ok = len(draws)
         n_conv = int(draws["converged"].sum()) if n_ok else 0
         print(f"  [{venue}] {n_ok}/{B} replicates returned, "
