@@ -2,13 +2,13 @@
 Master Pipeline Runner — Bitcoin Risk Premia Across Venues.
 
 Usage:
-    python main.py                    # full pipeline, all phases
-    python main.py --from 1a          # resume from Phase 1a onward
-    python main.py --only 0b 4        # run only Phase 0b and Phase 4
-    python main.py --skip 0a          # skip the long API scraping step
-    python main.py --skip-bootstrap   # skip Phase 3b (and therefore 3c)
-    python main.py --skip-diagnostics # skip Phases 2b, 2c, 3d (appendix only)
-    python main.py --bootstrap-B 200  # bootstrap replicates (default 200)
+    python main.py                     # full pipeline, all phases
+    python main.py --from 1a           # resume from Phase 1a onward
+    python main.py --only 0b 4         # run only Phase 0b and Phase 4
+    python main.py --skip 0a           # skip the long API scraping step
+    python main.py --skip-bootstrap    # skip Phase 3b (and therefore 3c)
+    python main.py --skip-diagnostics  # skip Phases 2b, 2c, 3d (appendix only)
+    python main.py --bootstrap-B 1000  # bootstrap replicates (default 1000)
     python main.py --bootstrap-workers 6
 
 Phase dependency graph:
@@ -52,6 +52,24 @@ from src.config import get_path
 
 LOG_DIR = Path("results") / "pipeline_logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+class TeeLogger:
+    """Duplicates stdout or stderr to both the terminal and a log file."""
+    def __init__(self, original_stream, log_file):
+        self.original_stream = original_stream
+        self.log_file = log_file
+
+    def write(self, message):
+        self.original_stream.write(message)
+        self.log_file.write(message)
+        self.log_file.flush()  # Ensure real-time writing
+
+    def flush(self):
+        self.original_stream.flush()
+        self.log_file.flush()
+        
+    def isatty(self):
+        return hasattr(self.original_stream, 'isatty') and self.original_stream.isatty()
 
 class PhaseTimer:
 
@@ -101,9 +119,8 @@ def _check_file(path, label=""):
     sz = p.stat().st_size
     if sz == 0:
         raise ValueError(f"  [CHECKPOINT FAILED] {label}: {p} is empty")
-    print(f"  [checkpoint] {label}: {p.name} "
-          f"({sz} B)" if sz < 1024 else
-          f"  [checkpoint] {label}: {p.name} ({sz / 1024:.1f} KB)")
+    size_str = f"{sz} B" if sz < 1024 else f"{sz / 1024:.1f} KB"
+    print(f"  [checkpoint] {label}: {p.name} ({size_str})")
 
 
 def _check_parquet_rows(path, label="", min_rows=1):
@@ -472,126 +489,142 @@ PHASE_ORDER = [
 ]
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Run the full Bitcoin risk-premia pipeline.",
-        formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--from", dest="from_phase", default=None)
-    parser.add_argument("--only", nargs="+", default=None)
-    parser.add_argument("--skip", nargs="+", default=None)
-    parser.add_argument("--skip-bootstrap", action="store_true",
-                        help="Skip Phase 3b (Phase 3c then auto-skips)")
-    parser.add_argument("--skip-diagnostics", action="store_true",
-                        help="Skip the appendix diagnostics (Phases 2b, 2c, 3d)")
-    parser.add_argument("--bootstrap-B", type=int, default=200)
-    parser.add_argument("--bootstrap-workers", type=int, default=6)
-    parser.add_argument("--continue-on-error", action="store_true")
-    args = parser.parse_args()
+    run_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    terminal_log_path = LOG_DIR / f"terminal_output_{run_ts}.log"
+    log_file = open(terminal_log_path, "w", encoding="utf-8")
 
-    all_tags = [tag for tag, _, _ in PHASE_ORDER]
-    if args.only:
-        run_tags = set(args.only)
-    elif args.from_phase:
-        if args.from_phase not in all_tags:
-            print(f"Unknown phase '{args.from_phase}'. Valid: {', '.join(all_tags)}")
-            sys.exit(1)
-        run_tags = set(all_tags[all_tags.index(args.from_phase):])
-    else:
-        run_tags = set(all_tags)
-    if args.skip:
-        run_tags -= set(args.skip)
-    if args.skip_bootstrap:
-        run_tags.discard("3b")
-    if args.skip_diagnostics:
-        run_tags -= {"2b", "2c", "3d"}
+    original_stdout = sys.stdout
+    original_stderr = sys.stderr
+    sys.stdout = TeeLogger(original_stdout, log_file)
+    sys.stderr = TeeLogger(original_stderr, log_file)
 
-    print("\n" + "#" * 70)
-    print("#   Bitcoin Risk Premia — Full Pipeline Run".ljust(69) + "#")
-    print(f"#   {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".ljust(69) + "#")
-    print("#" * 70)
-    print(f"\n  Phases to run: {', '.join(t for t in all_tags if t in run_tags)}\n")
+    try:
+        parser = argparse.ArgumentParser(
+            description="Run the full Bitcoin risk-premia pipeline.",
+            formatter_class=argparse.RawDescriptionHelpFormatter)
+        parser.add_argument("--from", dest="from_phase", default=None)
+        parser.add_argument("--only", nargs="+", default=None)
+        parser.add_argument("--skip", nargs="+", default=None)
+        parser.add_argument("--skip-bootstrap", action="store_true",
+                            help="Skip Phase 3b (Phase 3c then auto-skips)")
+        parser.add_argument("--skip-diagnostics", action="store_true",
+                            help="Skip the appendix diagnostics (Phases 2b, 2c, 3d)")
+        parser.add_argument("--bootstrap-B", type=int, default=1000)
+        parser.add_argument("--bootstrap-workers", type=int, default=6)
+        parser.add_argument("--continue-on-error", action="store_true")
+        args = parser.parse_args()
 
-    manifest = []
-    t_total = time.time()
-    for tag, name, runner in PHASE_ORDER:
-        if tag not in run_tags:
-            continue
-        try:
-            with PhaseTimer(f"Phase {tag}: {name}", manifest):
-                if tag == "3b":
-                    phase_3b_kernel_bootstrap(B=args.bootstrap_B,
-                                              workers=args.bootstrap_workers)
-                else:
-                    runner()
-        except Exception:
-            if not args.continue_on_error:
-                print(f"\n  Pipeline aborted at Phase {tag}. Use "
-                      f"--continue-on-error to proceed past failures, or "
-                      f"--from {tag} to resume after fixing the issue.")
-                break
+        all_tags = [tag for tag, _, _ in PHASE_ORDER]
+        if args.only:
+            run_tags = set(args.only)
+        elif args.from_phase:
+            if args.from_phase not in all_tags:
+                print(f"Unknown phase '{args.from_phase}'. Valid: {', '.join(all_tags)}")
+                sys.exit(1)
+            run_tags = set(all_tags[all_tags.index(args.from_phase):])
+        else:
+            run_tags = set(all_tags)
+        if args.skip:
+            run_tags -= set(args.skip)
+        if args.skip_bootstrap:
+            run_tags.discard("3b")
+        if args.skip_diagnostics:
+            run_tags -= {"2b", "2c", "3d"}
 
-    dt_total = time.time() - t_total
-    print("\n" + "=" * 70)
-    print("  PIPELINE SUMMARY")
-    print("=" * 70)
-    print(f"  {'Phase':<45s} {'Status':>8s} {'Time':>10s}")
-    print(f"  {'-'*45} {'-'*8} {'-'*10}")
-    for row in manifest:
-        status_str = "OK" if row["status"] == "OK" else "FAIL"
-        print(f"  {row['phase']:<45s} {status_str:>8s} "
-              f"{_fmt_time(row['seconds']):>10s}")
-        if row["error"]:
-            print(f"    -> {row['error'][:80]}")
-    print(f"  {'-'*45} {'-'*8} {'-'*10}")
-    print(f"  {'Total':<45s} {'':>8s} {_fmt_time(dt_total):>10s}")
+        print("\n" + "#" * 70)
+        print("#   Bitcoin Risk Premia — Full Pipeline Run".ljust(69) + "#")
+        print(f"#   {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".ljust(69) + "#")
+        print("#" * 70)
+        print(f"\n  Phases to run: {', '.join(t for t in all_tags if t in run_tags)}\n")
 
-    n_ok = sum(1 for r in manifest if r["status"] == "OK")
-    n_fail = sum(1 for r in manifest if r["status"] == "FAILED")
-    print(f"\n  {n_ok} phases OK, {n_fail} FAILED."
-          if n_fail else f"\n  All {n_ok} phases completed successfully.")
+        manifest = []
+        t_total = time.time()
+        for tag, name, runner in PHASE_ORDER:
+            if tag not in run_tags:
+                continue
+            try:
+                with PhaseTimer(f"Phase {tag}: {name}", manifest):
+                    if tag == "3b":
+                        phase_3b_kernel_bootstrap(B=args.bootstrap_B,
+                                                workers=args.bootstrap_workers)
+                    else:
+                        runner()
+            except Exception:
+                if not args.continue_on_error:
+                    print(f"\n  Pipeline aborted at Phase {tag}. Use "
+                        f"--continue-on-error to proceed past failures, or "
+                        f"--from {tag} to resume after fixing the issue.")
+                    break
 
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    pd.DataFrame(manifest).to_csv(LOG_DIR / f"run_{ts}.csv", index=False)
-    print(f"  Run manifest saved to {LOG_DIR / f'run_{ts}.csv'}")
+        dt_total = time.time() - t_total
+        print("\n" + "=" * 70)
+        print("  PIPELINE SUMMARY")
+        print("=" * 70)
+        print(f"  {'Phase':<45s} {'Status':>8s} {'Time':>10s}")
+        print(f"  {'-'*45} {'-'*8} {'-'*10}")
+        for row in manifest:
+            status_str = "OK" if row["status"] == "OK" else "FAIL"
+            print(f"  {row['phase']:<45s} {status_str:>8s} "
+                f"{_fmt_time(row['seconds']):>10s}")
+            if row["error"]:
+                print(f"    -> {row['error'][:80]}")
+        print(f"  {'-'*45} {'-'*8} {'-'*10}")
+        print(f"  {'Total':<45s} {'':>8s} {_fmt_time(dt_total):>10s}")
 
-    print("\n" + "=" * 70)
-    print("  POST-RUN CHECKLIST (manual, before updating the LaTeX)")
-    print("=" * 70)
-    print("""
-  Verify against the NEW CSVs — never carry numbers forward from memory.
+        n_ok = sum(1 for r in manifest if r["status"] == "OK")
+        n_fail = sum(1 for r in manifest if r["status"] == "FAILED")
+        print(f"\n  {n_ok} phases OK, {n_fail} FAILED."
+            if n_fail else f"\n  All {n_ok} phases completed successfully.")
 
-   1. CP rank: R = 1 across all seeds (tensor_pca_diagnostics_almeida.csv)
-   2. CL20 weights at theta = 2: (1, -1, 1) (cyl tables)
-   3. Kurtosis share ~ 30%, stable across kappa (kappa_sensitivity.csv)
-   4. EP totals: enhanced ~ vanilla; both bracketed by KDE and the
-      raw-moment anchor (ep_bootstrap_ci.csv, ep_decomposition_summary.csv)
-   5. NB sweep: enhanced strictly stabler than vanilla
-      (nb_sweep_summary.csv); published bounds bind (sigma_binding_check.csv)
-   6. Grid sensitivity: how much of the anchor gap closes on [0.30, 2.60]
-      (grid_sensitivity.csv)
-   7. Kernel: (b,c,d) params, tercile_labels present in npz, mean-one
-      normalization diagnostics printed by Phase 3
-   8. Joint regime test: Wald + curvature-at-money (joint_regime_test_*.csv)
-      — the formal basis for any hump-regime claim
-   9. Macro/full convergence status: if the fixed p-hat lets them converge,
-      the non-convergence narrative must be rewritten
-  10. Venue wedges: variance significant; skew/kurt per new run; no state
-      interactions (matched_difference_regressions.csv)
-  11. CL24 regional: shares sum to 1 per venue; regional LB wedge pattern
-      (cl24_regional.csv, cl24_regional_wedge.csv)
-  12. Frictions all insignificant under the 1/5/10 star convention
-      (friction_regressions.csv)
-  13. Inverse contract: sign agreement count (inverse_contract_wedge.csv)
-  14. MFK: tent shape within block-bootstrap bands (fig_mfk_unconditional)
-  15. No-trade band: fraction of days |wedge| inside the round-trip cost
-      band; CME leg quoted, Deribit leg calibrated -> use the break-even
-      framing for Deribit (notrade_band_summary.csv)
-  16. Async orthogonality: beta on async_move insignificant AND alpha
-      reproduces the unconditional wedge (async_orthogonality.csv)
-  17. KDE-tilt: curvature-at-money signs and low/mid/high ranking stable
-      across tilting densities (kde_tilt_robustness.csv)
-    """)
-    sys.exit(1 if n_fail > 0 else 0)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        pd.DataFrame(manifest).to_csv(LOG_DIR / f"run_{ts}.csv", index=False)
+        print(f"  Run manifest saved to {LOG_DIR / f'run_{ts}.csv'}")
 
+        print("\n" + "=" * 70)
+        print("  POST-RUN CHECKLIST (manual, before updating the LaTeX)")
+        print("=" * 70)
+        print("""
+    Verify against the NEW CSVs — never carry numbers forward from memory.
+
+    1. CP rank: R = 1 across all seeds (tensor_pca_diagnostics_almeida.csv)
+    2. CL20 weights at theta = 2: (1, -1, 1) (cyl tables)
+    3. Kurtosis share ~ 30%, stable across kappa (kappa_sensitivity.csv)
+    4. EP totals: enhanced ~ vanilla; both bracketed by KDE and the
+        raw-moment anchor (ep_bootstrap_ci.csv, ep_decomposition_summary.csv)
+    5. NB sweep: enhanced strictly stabler than vanilla
+        (nb_sweep_summary.csv); published bounds bind (sigma_binding_check.csv)
+    6. Grid sensitivity: how much of the anchor gap closes on [0.30, 2.60]
+        (grid_sensitivity.csv)
+    7. Kernel: (b,c,d) params, tercile_labels present in npz, mean-one
+        normalization diagnostics printed by Phase 3
+    8. Joint regime test: Wald + curvature-at-money (joint_regime_test_*.csv)
+        — the formal basis for any hump-regime claim
+    9. Macro/full convergence status: if the fixed p-hat lets them converge,
+        the non-convergence narrative must be rewritten
+    10. Venue wedges: variance significant; skew/kurt per new run; no state
+        interactions (matched_difference_regressions.csv)
+    11. CL24 regional: shares sum to 1 per venue; regional LB wedge pattern
+        (cl24_regional.csv, cl24_regional_wedge.csv)
+    12. Frictions all insignificant under the 1/5/10 star convention
+        (friction_regressions.csv)
+    13. Inverse contract: sign agreement count (inverse_contract_wedge.csv)
+    14. MFK: tent shape within block-bootstrap bands (fig_mfk_unconditional)
+    15. No-trade band: fraction of days |wedge| inside the round-trip cost
+        band; CME leg quoted, Deribit leg calibrated -> use the break-even
+        framing for Deribit (notrade_band_summary.csv)
+    16. Async orthogonality: beta on async_move insignificant AND alpha
+        reproduces the unconditional wedge (async_orthogonality.csv)
+    17. KDE-tilt: curvature-at-money signs and low/mid/high ranking stable
+        across tilting densities (kde_tilt_robustness.csv)
+        """)
+        sys.exit(1 if n_fail > 0 else 0)
+
+    finally:
+        # Restore streams and close log file during exit
+        sys.stdout = original_stdout
+        sys.stderr = original_stderr
+        log_file.close()
+        print(f"\n[logger] Full terminal transcript saved to: {terminal_log_path}")
 
 if __name__ == "__main__":
     main()
