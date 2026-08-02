@@ -14,6 +14,7 @@ import pandas as pd
 from scipy.integrate import trapezoid
 from typing import Dict, List
 import statsmodels.api as sm
+from config import get_return_grid
 from src.phase3.bootstrap_inference import (
     block_bootstrap_mean_bands, block_bootstrap_group_mean_bands,
     circular_block_indices,
@@ -22,7 +23,7 @@ from src.phase3.bootstrap_inference import (
 # Component 1: Conditional MFK by volatility tercile
 def compute_conditional_mfk(rnd_cme_path, rnd_der_path, tercile_labels, tau_days=27, R_grid=None):
     if R_grid is None:
-        R_grid = np.linspace(0.40, 2.00, 500)
+        R_GRID = get_return_grid()
 
     rnd_cme = pd.read_parquet(rnd_cme_path)
     rnd_der = pd.read_parquet(rnd_der_path)
