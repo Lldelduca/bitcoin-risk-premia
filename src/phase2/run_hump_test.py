@@ -21,7 +21,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-from src.config import get_path, get_return_grid
+from src.config import get_path, get_return_grid, get_seed
 from src.phase2.physical_density import (
     estimate_physical_density_almeida_from_returns, compute_overlapping_returns)
 from src.phase2.run_phase2 import (load_spot_prices,
@@ -31,7 +31,7 @@ R_GRID = get_return_grid()
 B = 500
 BLOCK_DAYS = 27
 BLOCK_RET = 54
-SEED = 42
+SEED = get_seed("default")
 PEAK_WIN = (R_GRID >= 0.90) & (R_GRID <= 1.10)
 TROUGH_LO = 0.70
 

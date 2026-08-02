@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from pathlib import Path
-from src.config import get_path, get_sample_window, get_return_grid
+from src.config import get_path, get_sample_window, get_return_grid, get_seed
 
 from src.phase2.physical_density import (
     estimate_physical_density_almeida, estimate_physical_density_kde,
@@ -38,7 +38,7 @@ R_GRID = get_return_grid()
 R_PLOT = np.arange(R_GRID[0], R_GRID[-1] + 0.001, 0.01)
 EP_BOOT_B = 500
 EP_BOOT_BLOCK = 54
-EP_BOOT_SEED = 42
+EP_BOOT_SEED = get_seed("default")
 
 ESTIMATOR_FNS = {
     "almeida": estimate_physical_density_almeida_from_returns,

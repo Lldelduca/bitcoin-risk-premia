@@ -41,6 +41,13 @@ def get_sample_window() -> tuple[str, str]:
     sample = cfg.get("sample", {})
     return sample.get("start_date"), sample.get("end_date")
 
+def get_seed(key: str = "default"):
+    cfg = load_config()
+    seeds = cfg.get("seeds", {})
+    if key not in seeds:
+        raise KeyError(f"Seed key '{key}' not found under 'seeds' in config.yaml")
+    return seeds[key]
+
 def get_api_key(service: str) -> str:
     cfg = load_config()
     return cfg.get("api_keys", {}).get(service)

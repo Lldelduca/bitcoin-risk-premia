@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 
-from src.config import get_path, get_return_grid
+from src.config import get_path, get_return_grid, get_seed
 from src.phase2.physical_density import (
     estimate_physical_density_almeida_from_returns,
     estimate_physical_density_grith_vanilla_from_returns,
@@ -25,7 +25,7 @@ from src.phase2.run_phase2 import (load_spot_prices,
 R_GRID = get_return_grid()
 B = 500
 BLOCK = 54
-SEED = 42
+SEED = get_seed("default")
 
 def _circular_blocks(n, block, rng):
     starts = rng.integers(0, n, size=int(np.ceil(n / block)))

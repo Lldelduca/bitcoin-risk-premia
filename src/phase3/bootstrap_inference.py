@@ -8,6 +8,7 @@ valid under weak dependence.
 """
 
 import numpy as np
+from config import get_seed
 
 def circular_block_indices(n: int, block_length: int, rng) -> np.ndarray:
     """Returns n resampled indices formed from circular contiguous blocks."""
@@ -18,8 +19,11 @@ def circular_block_indices(n: int, block_length: int, rng) -> np.ndarray:
     return idx.reshape(-1)[:n]
 
 
-def block_bootstrap_mean_bands(X, block_length=27, B=1000, ci=0.95, seed=42):
+def block_bootstrap_mean_bands(X, block_length=27, B=1000, ci=0.95, seed=None):
     """Pointwise bootstrap bands for the time-mean of daily curves."""
+    if seed is None:
+        seed = get_seed("default")
+        
     X = np.asarray(X, dtype=float)
     rng = np.random.default_rng(seed)
     n = X.shape[0]
@@ -39,8 +43,11 @@ def block_bootstrap_mean_bands(X, block_length=27, B=1000, ci=0.95, seed=42):
         "n_days": n,
     }
 
-def block_bootstrap_group_mean_bands(X, labels, groups, block_length=27, B=1000, ci=0.95, seed=42):
+def block_bootstrap_group_mean_bands(X, labels, groups, block_length=27, B=1000, ci=0.95, seed=None):
     """Pointwise bootstrap bands for group means of daily curves."""
+    if seed is None:
+        seed = get_seed("default")
+        
     X = np.asarray(X, dtype=float)
     labels = np.asarray(labels)
     rng = np.random.default_rng(seed)
@@ -73,8 +80,11 @@ def block_bootstrap_group_mean_bands(X, labels, groups, block_length=27, B=1000,
         }
     return out
 
-def block_bootstrap_statistic(n, stat_fn, block_length=27, B=1000, ci=0.95, seed=42, allow_failures=True):
+def block_bootstrap_statistic(n, stat_fn, block_length=27, B=1000, ci=0.95, seed=None, allow_failures=True):
     """Generic block bootstrap for an arbitrary statistic of day indices."""
+    if seed is None:
+        seed = get_seed("default")
+        
     rng = np.random.default_rng(seed)
     point = np.atleast_1d(np.asarray(stat_fn(np.arange(n)), dtype=float))
     draws = []

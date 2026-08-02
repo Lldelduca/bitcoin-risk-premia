@@ -67,7 +67,7 @@ def compute_conditional_mfk(rnd_cme_path, rnd_der_path, tercile_labels, tau_days
 
     # Inference
     psi_vals = psi_df.drop(columns=["tercile"]).values.astype(float)
-    bands = block_bootstrap_mean_bands(psi_vals, block_length=27, B=1000, seed=42)
+    bands = block_bootstrap_mean_bands(psi_vals, block_length=27, B=1000)
     results["unconditional"] = {
         "R_grid": R_grid,
         "mean_psi": bands["mean"],
@@ -81,7 +81,7 @@ def compute_conditional_mfk(rnd_cme_path, rnd_der_path, tercile_labels, tau_days
     labels = psi_df["tercile"].astype(object).values
     g_bands = block_bootstrap_group_mean_bands(
         psi_vals, labels, ["low", "mid", "high"],
-        block_length=27, B=1000, seed=42,
+        block_length=27, B=1000,
     )
     for tercile, b in g_bands.items():
         results[tercile] = {
@@ -316,11 +316,11 @@ def compute_regional_mfk(psi_df, R_grid, tercile_col="tercile"):
         }
 
     summary_rows = []
-    uncond = block_bootstrap_mean_bands(vals, block_length=27, B=1000, seed=42)
+    uncond = block_bootstrap_mean_bands(vals, block_length=27, B=1000)
     summary_rows.append(_row("unconditional", uncond, uncond["n_days"]))
 
     g_bands = block_bootstrap_group_mean_bands(
-        vals, labels, ["low", "mid", "high"], block_length=27, B=1000, seed=42,
+        vals, labels, ["low", "mid", "high"], block_length=27, B=1000,
     )
     for tercile in ["low", "mid", "high"]:
         if tercile in g_bands:

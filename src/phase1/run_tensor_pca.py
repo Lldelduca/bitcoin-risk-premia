@@ -9,7 +9,7 @@ import argparse
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from src.config import get_path, get_sample_window, get_tensor_grid
+from src.config import get_path, get_sample_window, get_seed, get_tensor_grid
 from src.phase1.tensor_pca import (build_ivs_tensor, standardize_tensor, cp_als, select_rank)
 
 SAMPLE_START, SAMPLE_END = get_sample_window()
@@ -115,16 +115,11 @@ def run_tensor_decomposition(grid_name: str = "almeida"):
 
     # Rank selection via CORCONDIA
     print(f"\n  Selecting CP rank via CORCONDIA (Bro & Kiers, 2003):")
-    print(f"  Checking seed robustness across [42, 7, 100, 2024]...")
+    print(f"  Checking seed robustness across {get_seed('tensor_ranks')}...")
     seed_results = {}
     seed_chosen = {}
-    for seed in [42, 7, 100, 2024]:
+    for seed in get_seed("tensor_ranks"):
         print(f"\n  --- Seed {seed} ---")
-        # The seed is passed into select_rank -> cp_als(random_state=seed),
-        # which controls the random factor initialization. (The previous
-        # np.random.seed(seed) call had no effect: cp_als uses its own
-        # np.random.default_rng with a hardcoded default of 42, so all four
-        # 'seeds' ran identical computations.)
         res = select_rank(X_std, max_rank=6, corcondia_threshold=70.0, random_state=seed)
         seed_results[seed] = res["diagnostics"]
         seed_chosen[seed] = res["chosen_rank"]

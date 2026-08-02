@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from src.config import get_path, get_return_grid
+from src.config import get_path, get_return_grid, get_seed
 
 from src.phase3.conditional_kernel import (estimate_conditional_kernel, coefficients_at)
 from src.phase3.bootstrap_inference import circular_block_indices
@@ -121,7 +121,7 @@ def run_bootstrap(venues, spec_name, B, workers, ci=0.95):
                   f"(full-sample Z_IVS_1 labels)")
 
         jobs = [{
-            "seed": 10_000 + b, "Q": Q, "Z": Z, "p_phys": p_phys,
+            "seed": get_seed("phase3_bootstrap_base") + b, "Q": Q, "Z": Z, "p_phys": p_phys,
             "theta_full": theta_full, "tercile_states": tercile_states,
             "venue": venue,
         } for b in range(B)]

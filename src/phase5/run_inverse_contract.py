@@ -97,7 +97,7 @@ def run_inverse_contract():
     def stat_fn(idx):
         return np.concatenate([pred_wedge[idx].mean(0), meas_wedge[idx].mean(0)])
     res = block_bootstrap_statistic(n, stat_fn, block_length=BOOT_BLOCK,
-                                    B=BOOT_B, seed=42)
+                                    B=BOOT_B)
 
     summary = []
     for j, k in enumerate((2, 3, 4)):
