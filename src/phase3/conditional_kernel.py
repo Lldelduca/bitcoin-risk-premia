@@ -160,8 +160,8 @@ def estimate_conditional_kernel(
         print(f"    Final |grad|_inf = {grad_inf:.2e}")
 
     return ConditionalKernelResult(
-        theta=result.x, n_params=n_params, n_days=T, n_Z=n_Z, venue=venue, spec_name=spec_name, kl_total=kl_total,
-        kl_mean=kl_mean, converged=result.success, hessian_inv=hess_inv)
+    theta=result.x, n_params=n_params, n_days=T, n_Z=n_Z, venue=venue, spec_name=spec_name, kl_total=kl_total,
+    kl_mean=kl_mean, converged=result.success, grad_inf=grad_inf, hessian_inv=hess_inv)
 
 def coefficients_at(theta, Z_vec, n_Z):
     return _compute_coefficients(np.asarray(theta, dtype=float), np.asarray(Z_vec, dtype=float), n_Z)
