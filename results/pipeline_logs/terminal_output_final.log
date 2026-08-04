@@ -1,0 +1,993 @@
+Results Log
+
+######################################################################
+#   Bitcoin Risk Premia — Full Pipeline Run                          #
+#   2026-08-02 22:31:43                                              #
+######################################################################
+
+  Phases to run: 1a, 1b, 1c, 1d, 2, 2b, 2c, 2d, 2e, 3, 3b, 3c, 3d, 4, 4b, 5, 5b, 5c, 5d, 5e, 5f, 5g
+
+============================================================
+  Phase 1a: SSVI Surface Fitting
+============================================================
+  CME: 65,598 options, 802 days
+  Complete: 772 fitted, 30 skipped in 1.6 min
+  DER: 135,081 options, 1327 days
+  Complete: 1327 fitted, 0 skipped in 3.1 min
+
+  Total fitted slices: 8,913
+  Total fitted days:   2,099
+
+  CME RMSE Fit Summary (772 days):
+    Mean/Median: 1.6826% / 1.6274%
+    p05/p95:     0.5522% / 3.0360%
+    Max RMSE:    5.9437%
+
+  DER RMSE Fit Summary (1327 days):
+    Mean/Median: 2.5978% / 2.4584%
+    p05/p95:     1.5275% / 4.0505%
+    Max RMSE:    7.6994%
+
+  SSVI params: 8,913 rows
+  forward column: 8,913/8,913 non-null
+
+============================================================
+  Risk-Neutral Density Extraction Pipeline
+============================================================
+  Sample: 2020-01-13 → 2023-08-31
+  Target maturities: [14, 27, 60] days
+
+  [CME] Reconstructing surfaces for 772 fitted days × 3 maturities (forwards from parquet)
+  [CME] Complete: 772 days, 1565 RNDs, 0 skipped in 25.6 min
+
+  [DER] Reconstructing surfaces for 1327 fitted days × 3 maturities (forwards from parquet)
+  [DER] Complete: 1327 days, 3946 RNDs, 0 skipped in 67.6 min
+
+  CME:
+    Total RNDs extracted: 1,565
+    τ=14d: 211 extracted, 211 valid (100%)
+    τ=27d: 624 extracted, 624 valid (100%)
+    τ=60d: 730 extracted, 730 valid (100%)
+    Mean return (should ≈ 1.0): 1.0019
+    Mean std return: 0.2415
+
+  DER:
+    Total RNDs extracted: 3,946
+    τ=14d: 1302 extracted, 1302 valid (100%)
+    τ=27d: 1317 extracted, 1317 valid (100%)
+    τ=60d: 1327 extracted, 1327 valid (100%)
+    Mean return (should ≈ 1.0): 1.0018
+    Mean std return: 0.2268
+
+  [checkpoint] CME RND summary: 1,565 rows
+  [checkpoint] DER RND summary: 3,946 rows
+
+============================================================
+  CP Tensor Decomposition
+============================================================
+
+# Grid: almeida
+  Sample: 2020-01-13 → 2023-08-31
+
+  Loaded 8,913 fitted SSVI parameter rows
+  CME: 65,598 cleaned options
+  DER: 135,081 cleaned options
+
+  Maturity grid: almeida = [9, 27, 45]
+  Common dates across venues: 772
+
+  [CME] Filled 772, skipped 0
+  [DER] Filled 772, skipped 0
+
+  Tensor shape: (772, 27, 3, 2)
+  Non-NaN entries: 89,208 / 125,064 (71.3%)
+
+  Selecting CP rank via CORCONDIA (Bro & Kiers, 2003):
+  Checking seed robustness across [42, 7, 100, 2024]...
+
+  --- Seed 42 ---
+    CP-ALS converged in 5 iterations (rel. err = 0.456949)
+  Rank 1: rec.err=0.4569, explained=0.791, CORCONDIA=100.0
+    CP-ALS converged in 16 iterations (rel. err = 0.379437)
+  Rank 2: rec.err=0.3794, explained=0.856, CORCONDIA=-55.7
+    CP-ALS converged in 432 iterations (rel. err = 0.277661)
+  Rank 3: rec.err=0.2777, explained=0.923, CORCONDIA=-153751.5
+    CP-ALS converged in 447 iterations (rel. err = 0.235533)
+  Rank 4: rec.err=0.2355, explained=0.945, CORCONDIA=-174.3
+  Rank 5: rec.err=0.1989, explained=0.960, CORCONDIA=-123.4
+  Rank 6: rec.err=0.1766, explained=0.969, CORCONDIA=-138724.8
+  Seed 42: chosen rank = 1
+
+  --- Seed 7 ---
+    CP-ALS converged in 6 iterations (rel. err = 0.456949)
+  Rank 1: rec.err=0.4569, explained=0.791, CORCONDIA=100.0
+    CP-ALS converged in 15 iterations (rel. err = 0.379437)
+  Rank 2: rec.err=0.3794, explained=0.856, CORCONDIA=-57.3
+    CP-ALS converged in 309 iterations (rel. err = 0.277653)
+  Rank 3: rec.err=0.2777, explained=0.923, CORCONDIA=-129582.9
+    CP-ALS converged in 279 iterations (rel. err = 0.235529)
+  Rank 4: rec.err=0.2355, explained=0.945, CORCONDIA=-158.2
+  Rank 5: rec.err=0.1988, explained=0.960, CORCONDIA=-27051.3
+  Rank 6: rec.err=0.1779, explained=0.968, CORCONDIA=-4728.9
+  Seed 7: chosen rank = 1
+
+  --- Seed 100 ---
+    CP-ALS converged in 6 iterations (rel. err = 0.456949)
+  Rank 1: rec.err=0.4569, explained=0.791, CORCONDIA=100.0
+    CP-ALS converged in 179 iterations (rel. err = 0.375063)
+  Rank 2: rec.err=0.3751, explained=0.859, CORCONDIA=-140427.1
+  Rank 3: rec.err=0.2777, explained=0.923, CORCONDIA=-94565.6
+  Rank 4: rec.err=0.2358, explained=0.944, CORCONDIA=-93.0
+  Rank 5: rec.err=0.1991, explained=0.960, CORCONDIA=-1137.3
+  Rank 6: rec.err=0.1756, explained=0.969, CORCONDIA=-71271.5
+  Seed 100: chosen rank = 1
+
+  --- Seed 2024 ---
+    CP-ALS converged in 6 iterations (rel. err = 0.456949)
+  Rank 1: rec.err=0.4569, explained=0.791, CORCONDIA=100.0
+    CP-ALS converged in 173 iterations (rel. err = 0.375064)
+  Rank 2: rec.err=0.3751, explained=0.859, CORCONDIA=-137705.2
+    CP-ALS converged in 19 iterations (rel. err = 0.277668)
+  Rank 3: rec.err=0.2777, explained=0.923, CORCONDIA=-174144.0
+    CP-ALS converged in 175 iterations (rel. err = 0.235533)
+  Rank 4: rec.err=0.2355, explained=0.945, CORCONDIA=-172.3
+  Rank 5: rec.err=0.1990, explained=0.960, CORCONDIA=-774.6
+  Rank 6: rec.err=0.1767, explained=0.969, CORCONDIA=-5796.0
+  Seed 2024: chosen rank = 1
+
+  Rank R = 1 is stable across all four seeds. Chosen rank: R = 1
+
+  Running final CP-ALS at rank 1...
+  CP-ALS converged in 5 iterations (rel. err = 0.456949)
+  Final relative reconstruction error: 0.4569
+  Variance explained: 0.791
+
+  Sign convention: component 1 OK (corr with RV = +0.695)
+  Component 1: weight=265.671, CME loading=-0.668, Deribit loading=-0.744 so COMMON factor (same sign on both venues)
+
+
+# Grid: broad
+  Sample: 2020-01-13 → 2023-08-31
+
+  Loaded 8,913 fitted SSVI parameter rows
+  CME: 65,598 cleaned options
+  DER: 135,081 cleaned options
+
+  Maturity grid: broad = [14, 21, 27, 35, 45, 60, 90, 120, 180]
+  Common dates across venues: 772
+
+  [CME] Filled 772, skipped 0
+  [DER] Filled 772, skipped 0
+  Tensor shape: (772, 27, 9, 2)
+  Non-NaN entries: 294,354 / 375,192 (78.5%)
+
+  Selecting CP rank via CORCONDIA (Bro & Kiers, 2003):
+  Checking seed robustness across [42, 7, 100, 2024]...
+
+  --- Seed 42 ---
+    CP-ALS converged in 6 iterations (rel. err = 0.475162)
+  Rank 1: rec.err=0.4752, explained=0.774, CORCONDIA=100.0
+    CP-ALS converged in 79 iterations (rel. err = 0.436046)
+  Rank 2: rec.err=0.4360, explained=0.810, CORCONDIA=-13310.6
+    CP-ALS converged in 273 iterations (rel. err = 0.359795)
+  Rank 3: rec.err=0.3598, explained=0.871, CORCONDIA=-183192.8
+  Rank 4: rec.err=0.3176, explained=0.899, CORCONDIA=-258172.0
+  Rank 5: rec.err=0.2867, explained=0.918, CORCONDIA=-2787550.8
+  Rank 6: rec.err=0.2640, explained=0.930, CORCONDIA=-1045862.3
+  Seed 42: chosen rank = 1
+
+  --- Seed 7 ---
+    CP-ALS converged in 5 iterations (rel. err = 0.475162)
+  Rank 1: rec.err=0.4752, explained=0.774, CORCONDIA=100.0
+    CP-ALS converged in 307 iterations (rel. err = 0.406812)
+  Rank 2: rec.err=0.4068, explained=0.835, CORCONDIA=-89650.8
+    CP-ALS converged in 174 iterations (rel. err = 0.359795)
+  Rank 3: rec.err=0.3598, explained=0.871, CORCONDIA=-183161.9
+  Rank 4: rec.err=0.3176, explained=0.899, CORCONDIA=-233094.9
+  Rank 5: rec.err=0.2864, explained=0.918, CORCONDIA=-779215.7
+  Rank 6: rec.err=0.2637, explained=0.930, CORCONDIA=-379163.5
+  Seed 7: chosen rank = 1
+
+  --- Seed 100 ---
+    CP-ALS converged in 5 iterations (rel. err = 0.475162)
+  Rank 1: rec.err=0.4752, explained=0.774, CORCONDIA=100.0
+    CP-ALS converged in 64 iterations (rel. err = 0.436046)
+  Rank 2: rec.err=0.4360, explained=0.810, CORCONDIA=-10267.8
+    CP-ALS converged in 190 iterations (rel. err = 0.359795)
+  Rank 3: rec.err=0.3598, explained=0.871, CORCONDIA=-169402.2
+    CP-ALS converged in 473 iterations (rel. err = 0.317562)
+  Rank 4: rec.err=0.3176, explained=0.899, CORCONDIA=-266738.1
+    CP-ALS converged in 496 iterations (rel. err = 0.286431)
+  Rank 5: rec.err=0.2864, explained=0.918, CORCONDIA=-681930.0
+  Rank 6: rec.err=0.2645, explained=0.930, CORCONDIA=-1758536.6
+  Seed 100: chosen rank = 1
+
+  --- Seed 2024 ---
+    CP-ALS converged in 5 iterations (rel. err = 0.475162)
+  Rank 1: rec.err=0.4752, explained=0.774, CORCONDIA=100.0
+    CP-ALS converged in 352 iterations (rel. err = 0.406812)
+  Rank 2: rec.err=0.4068, explained=0.835, CORCONDIA=-126564.0
+    CP-ALS converged in 165 iterations (rel. err = 0.359795)
+  Rank 3: rec.err=0.3598, explained=0.871, CORCONDIA=-169321.3
+  Rank 4: rec.err=0.3207, explained=0.897, CORCONDIA=-22270.4
+  Rank 5: rec.err=0.2878, explained=0.917, CORCONDIA=-26374351.6
+  Rank 6: rec.err=0.2640, explained=0.930, CORCONDIA=-760154778.8
+  Seed 2024: chosen rank = 1
+
+  Rank R = 1 is stable across all four seeds. Chosen rank: R = 1
+
+  Running final CP-ALS at rank 1...
+  CP-ALS converged in 6 iterations (rel. err = 0.475162)
+  Final relative reconstruction error: 0.4752
+  Variance explained: 0.774
+
+  Sign convention: flipped component 1 (corr with RV was -0.687, now +0.687)
+  Component 1: weight=477.384, CME loading=-0.622, Deribit loading=-0.783 so COMMON factor (same sign on both venues)
+
+
+============================================================
+  Conditioning Vector Construction
+============================================================
+  Sample: 2020-01-13 -> 2023-08-31
+
+  Merged panel: 1,327 rows over 1327 unique dates
+  Common CME-Deribit window: 772 days (2020-01-13 -> 2023-08-31)
+  Sign-convention check: corr(Z_IVS_1, RV) = +0.695
+
+  Coverage report:
+specification            variable  n_obs  n_non_null  coverage_pct first_valid last_valid
+      Z_macro                 vix    772         772        100.00  2020-01-13 2023-08-31
+      Z_macro          baa_spread    772         772        100.00  2020-01-13 2023-08-31
+      Z_macro                dgs2    772         772        100.00  2020-01-13 2023-08-31
+      Z_macro                 dxy    772         772        100.00  2020-01-13 2023-08-31
+      Z_macro ALL (complete case)    772         772        100.00  2020-01-13 2023-08-31
+     Z_crypto             Z_IVS_1    772         772        100.00  2020-01-13 2023-08-31
+     Z_crypto                  rv    772         772        100.00  2020-01-13 2023-08-31
+     Z_crypto                 fng    772         772        100.00  2020-01-13 2023-08-31
+     Z_crypto ALL (complete case)    772         772        100.00  2020-01-13 2023-08-31
+       Z_full                 vix    772         772        100.00  2020-01-13 2023-08-31
+       Z_full          baa_spread    772         772        100.00  2020-01-13 2023-08-31
+       Z_full                dgs2    772         772        100.00  2020-01-13 2023-08-31
+       Z_full                 dxy    772         772        100.00  2020-01-13 2023-08-31
+       Z_full             Z_IVS_1    772         772        100.00  2020-01-13 2023-08-31
+       Z_full                  rv    772         772        100.00  2020-01-13 2023-08-31
+       Z_full                 fng    772         772        100.00  2020-01-13 2023-08-31
+       Z_full ALL (complete case)    772         772        100.00  2020-01-13 2023-08-31
+  Z_crypto_hl             Z_IVS_1    772         772        100.00  2020-01-13 2023-08-31
+  Z_crypto_hl                  rv    772         772        100.00  2020-01-13 2023-08-31
+  Z_crypto_hl                 fng    772         772        100.00  2020-01-13 2023-08-31
+  Z_crypto_hl      delta_f_hl_der    772          73          9.46  2023-05-12 2023-08-31
+  Z_crypto_hl ALL (complete case)    772          73          9.46  2023-05-12 2023-08-31
+
+  Pearson correlation matrix (Z_full, standardized):
+              vix  baa_spread   dgs2    dxy  Z_IVS_1     rv    fng
+vix         1.000       0.748 -0.194  0.316    0.349  0.542 -0.396
+baa_spread  0.748       1.000 -0.263  0.332    0.248  0.431 -0.154
+dgs2       -0.194      -0.263  1.000  0.697   -0.610 -0.330 -0.235
+dxy         0.316       0.332  0.697  1.000   -0.412 -0.134 -0.454
+Z_IVS_1     0.349       0.248 -0.610 -0.412    1.000  0.695  0.108
+rv          0.542       0.431 -0.330 -0.134    0.695  1.000 -0.187
+fng        -0.396      -0.154 -0.235 -0.454    0.108 -0.187  1.000
+
+
+============================================================
+  Phase 2: Beason-Schreindorfer EP Decomposition
+============================================================
+
+  Spot series: 1327 days
+
+  Estimating physical density (enhanced, headline)...
+    n_returns = 1300, integral = 1.0000
+
+  Estimating physical density (AGMW vanilla, benchmark)...
+    integral = 1.0000, opt_success = True, rank_deficient_polyfit = True
+    published-bound binding: ['k_L_upper', 'k_R_upper']
+
+  Estimating physical density (KDE, appendix robustness)...
+    n_returns = 1300, bandwidth = 0.0506, integral = 1.0000
+
+  Computing EP decomposition: CME_almeida
+    Total EP = 0.0363
+      downside: +0.0043 (+11.7%)
+           mid: -0.0026 (-7.2%)
+        upside: +0.0347 (+95.8%)
+
+  Computing EP decomposition: DER_almeida
+    Total EP = 0.0363
+      downside: +0.0074 (+20.5%)
+           mid: -0.0024 (-6.7%)
+        upside: +0.0314 (+86.5%)
+
+  Computing EP decomposition: CME_vanilla
+    Total EP = 0.0367
+      downside: +0.0054 (+14.6%)
+           mid: -0.0030 (-8.1%)
+        upside: +0.0344 (+93.9%)
+
+  Computing EP decomposition: DER_vanilla
+    Total EP = 0.0367
+      downside: +0.0085 (+23.3%)
+           mid: -0.0028 (-7.7%)
+        upside: +0.0311 (+84.7%)
+
+  Computing EP decomposition: CME_kde
+    Total EP = 0.0416
+      downside: +0.0066 (+15.9%)
+           mid: -0.0022 (-5.3%)
+        upside: +0.0372 (+89.5%)
+
+  Computing EP decomposition: DER_kde
+    Total EP = 0.0416
+      downside: +0.0098 (+23.6%)
+           mid: -0.0020 (-4.8%)
+        upside: +0.0339 (+81.4%)
+
+  Block-bootstrap EP inference (B=500, block=54 days, ~48 effectively independent return obs)...
+    [almeida] CME: total EP = +0.0363 [-0.0125, +0.1040] (se = 0.0297, B_eff = 500)
+    [almeida] DER: total EP = +0.0363 [-0.0125, +0.1040] (se = 0.0297, B_eff = 500)
+
+    [vanilla] CME: total EP = +0.0367 [-0.0185, +0.1036] (se = 0.0316, B_eff = 500)
+    [vanilla] DER: total EP = +0.0367 [-0.0185, +0.1036] (se = 0.0316, B_eff = 500)
+
+    [    kde] CME: total EP = +0.0416 [-0.0103, +0.1018] (se = 0.0291, B_eff = 500)
+    [    kde] DER: total EP = +0.0416 [-0.0103, +0.1018] (se = 0.0291, B_eff = 500)
+
+    [raw moment] ALL: total EP = +0.0442 [-0.0102, +0.1047] (no density estimation; estimator-free anchor)
+
+  [checkpoint] EP bootstrap CIs: ep_bootstrap_ci.csv (5.1 KB)
+  [checkpoint] raw-moment EP: +0.0442 [-0.0102, +0.1047]
+
+============================================================
+  NB Sweep: bin-count stability (enhanced vs AGMW vanilla)
+============================================================
+
+  1300 overlapping 27d returns; NB grid = [8, 9, 10, 11, 12, 13]
+  [CME] Loaded 624 daily RNDs
+  [DER] Loaded 1317 daily RNDs 
+
+  Stability (range as fraction of NB=12 peak; lower = stabler):
+estimator venue  density_range_pct  ep_range_pct  total_ep_spread
+  almeida   CME             0.3976        0.9730           0.0066
+  almeida   DER             0.3976        1.0084           0.0066
+  vanilla   CME             0.4635        1.6523           0.0252
+  vanilla   DER             0.4635        1.7195           0.0252
+
+  Published bounds bind in 6/6 NB settings
+
+  [checkpoint] Published-bound binding check: sigma_binding_check.csv (1.2 KB)
+    almeida CME: density=0.398, ep=0.973
+    almeida DER: density=0.398, ep=1.008
+    vanilla CME: density=0.463, ep=1.652
+    vanilla DER: density=0.463, ep=1.720
+  [checkpoint] published bounds bind in 6/6 NB settings
+
+============================================================
+  Paired bootstrap: enhanced - vanilla total EP (B=500)
+============================================================
+
+venue  mean_diff    ci_lo   ci_hi  se_boot  p_two_sided  B_effective  n_fail  block_length
+  CME    0.00006 -0.01671 0.01465  0.00802        0.988          500       0            54
+  DER    0.00006 -0.01671 0.01465  0.00802        0.988          500       0            54
+
+  [checkpoint] CME enhanced-vanilla EP diff: +0.00006 [-0.01671, +0.01465] (p = 0.988)
+  [checkpoint] DER enhanced-vanilla EP diff: +0.00006 [-0.01671, +0.01465] (p = 0.988)
+
+============================================================
+  Grid Sensitivity: integration-window dependence of total EP
+============================================================
+  1300 overlapping returns; support [0.482, 2.180]
+  [CME] average RND rebuilt on master grid [0.25, 4.50] from 624 days
+  [DER] average RND rebuilt on master grid [0.25, 4.50] from 1317 days
+
+  Total EP by integration window:
+grid             headline  wide_1  wide_2
+estimator venue                          
+almeida   CME      0.0362  0.0353  0.0340
+          DER      0.0363  0.0352  0.0339
+kde       CME      0.0416  0.0426  0.0428
+          DER      0.0416  0.0426  0.0427
+vanilla   CME      0.0367  0.0382  0.0401
+          DER      0.0367  0.0382  0.0399
+
+  Raw-moment anchor (full support): +0.0442
+  [CME] enhanced: +0.0362 -> +0.0340 on [0.30, 2.60]; gap to anchor closed: -28.2%; q mass clipped on headline grid: 0.0078
+  [DER] enhanced: +0.0363 -> +0.0339 on [0.30, 2.60]; gap to anchor closed: -30.1%; q mass clipped on headline grid: 0.0089
+
+  Returns above R = 2.00 (headline window): 4
+
+  [checkpoint] CME enhanced on [0.30, 2.60]: +0.0340, gap closed -28.2%
+  [checkpoint] DER enhanced on [0.30, 2.60]: +0.0339, gap closed -30.1%
+
+
+============================================================
+  Kernel Hump Significance Test (joint block bootstrap, B=500)
+============================================================
+  [CME] Loaded 624 daily RNDs from rnd_CME_densities.parquet
+  [DER] Loaded 1317 daily RNDs from rnd_DER_densities.parquet
+
+venue  H_point  peak_R  trough_R  H_boot_mean   ci_lo  ci_hi  p_monotone  B_effective  n_fail  block_days  block_returns
+  CME   0.9405   1.015    0.8420       0.7891  0.1350 1.4463       0.012          500       0          27             54
+  DER   0.8167   1.015    0.8436       0.6631 -0.0081 1.2882       0.028          500       0          27             54
+
+  [checkpoint] CME: H = 0.941 [0.135, 1.446], P(monotone) = 0.0120
+  [checkpoint] DER: H = 0.817 [-0.008, 1.288], P(monotone) = 0.0280
+
+============================================================
+  BVRP State-Space Decomposition (Grith slide extension)
+============================================================
+    500/500 replicates
+
+  BVRP totals (sigma2_Q - sigma2_P):
+    CME: -0.00478 [-0.02334, +0.00867]  (s2_Q=0.03557, s2_P=0.04035)
+    DER: -0.00206 [-0.01991, +0.01189]  (s2_Q=0.03829, s2_P=0.04035)
+
+  Regional contributions (enhanced, x100 pp):
+    CME: down -0.074, mid -0.050, up -0.354
+    DER: down +0.039, mid -0.053, up -0.192
+
+  [checkpoint] CME BVRP (enhanced): -0.00478 [-0.02334, +0.00867]  down/mid/up = -0.00074/-0.00050/-0.00354
+  [checkpoint] DER BVRP (enhanced): -0.00206 [-0.01991, +0.01189]  down/mid/up = +0.00039/-0.00053/-0.00192
+
+
+============================================================
+  Phase 3: Conditional Pricing Kernel Estimation
+============================================================
+  max_iter = 20000, workers = 6
+  Physical density integral = 1.0000
+
+  [CME] Loaded 624 daily RNDs at tau=27d
+  [DER] Loaded 1317 daily RNDs at tau=27d
+
+  Loaded full-sample Z_IVS_1 tercile labels: 772 days, counts = {'low': 258, 'mid': 257, 'high': 257}
+  Loaded macro: Z shape (772, 4), cols ['vix', 'baa_spread', 'dgs2', 'dxy']
+  Loaded crypto: Z shape (772, 3), cols ['Z_IVS_1', 'rv', 'fng']
+  Loaded full: Z shape (772, 7), cols ['vix', 'baa_spread', 'dgs2', 'dxy', 'Z_IVS_1', 'rv', 'fng']
+
+  Building estimation jobs...
+    [CME|macro] Aligned: 624 days, n_Z=4
+    [DER|macro] Aligned: 765 days, n_Z=4
+
+    [CME|crypto] Aligned: 624 days, n_Z=3
+    [DER|crypto] Aligned: 765 days, n_Z=3
+
+    [CME|full] Aligned: 624 days, n_Z=7
+    [DER|full] Aligned: 765 days, n_Z=7
+
+  Launching 6 estimations across 6 workers...
+    Estimating: venue=CME, spec=macro, T=624, n_Z=4, n_params=15
+    Estimating: venue=DER, spec=macro, T=765, n_Z=4, n_params=15
+    Estimating: venue=CME, spec=crypto, T=624, n_Z=3, n_params=12
+    Estimating: venue=DER, spec=crypto, T=765, n_Z=3, n_params=12
+    Estimating: venue=CME, spec=full, T=624, n_Z=7, n_params=24
+    Estimating: venue=DER, spec=full, T=765, n_Z=7, n_params=24
+    Using default initialization for all
+
+  [CME_crypto] Converged: True, KL mean=-0.281042
+    Converged: True, KL total=-175.3700, KL mean=-0.281042
+    Final |grad|_inf = 1.07e-03
+    tercile low: ∫p·m = 1.0000, argmax log m at R = 0.89
+    tercile mid: ∫p·m = 1.0000, argmax log m at R = 0.84
+    tercile high: ∫p·m = 1.0000, argmax log m at R = 2.00
+
+  [DER_crypto] Converged: True, KL mean=-0.250259
+    Converged: True, KL total=-191.4485, KL mean=-0.250259
+    Final |grad|_inf = 1.81e-03
+    tercile low: ∫p·m = 1.0000, argmax log m at R = 0.87
+    tercile mid: ∫p·m = 1.0000, argmax log m at R = 2.00
+    tercile high: ∫p·m = 1.0000, argmax log m at R = 2.00
+
+  [CME_full] Converged: False, KL mean=-0.288105
+    Converged: False, KL total=-179.7772, KL mean=-0.288105
+    Final |grad|_inf = 1.38e-01
+    tercile low: ∫p·m = 1.0000, argmax log m at R = 0.95
+    tercile mid: ∫p·m = 1.0000, argmax log m at R = 0.85
+    tercile high: ∫p·m = 1.0000, argmax log m at R = 2.00
+
+  [CME_macro] Converged: False, KL mean=-0.277462
+    Converged: False, KL total=-173.1361, KL mean=-0.277462
+    Final |grad|_inf = 2.40e-03
+    tercile low: ∫p·m = 1.0000, argmax log m at R = 0.93
+    tercile mid: ∫p·m = 1.0000, argmax log m at R = 0.78
+    tercile high: ∫p·m = 1.0000, argmax log m at R = 2.00
+
+  [DER_full] Converged: False, KL mean=-0.258916
+    Converged: False, KL total=-198.0707, KL mean=-0.258916
+    Final |grad|_inf = 2.20e-01
+    tercile low: ∫p·m = 1.0000, argmax log m at R = 0.94
+    tercile mid: ∫p·m = 1.0000, argmax log m at R = 0.80
+    tercile high: ∫p·m = 1.0000, argmax log m at R = 2.00
+
+  [DER_macro] Converged: False, KL mean=-0.248856
+    Converged: False, KL total=-190.3749, KL mean=-0.248856
+    Final |grad|_inf = 6.83e-02
+    tercile low: ∫p·m = 1.0000, argmax log m at R = 0.92
+    tercile mid: ∫p·m = 1.0000, argmax log m at R = 0.73
+    tercile high: ∫p·m = 1.0000, argmax log m at R = 2.00
+
+
+  Computing unconditional MFK over 619 matched days (95% block-bootstrap bands, block=27, B=1000)
+
+
+============================================================
+  Phase 3 Bootstrap: Tercile Kernel Coefficient Inference
+  spec = crypto, B = 1000, block = 27, workers = 8
+============================================================
+
+  [CME] Loaded 624 daily RNDs at tau=27d
+  [CME] 624 aligned days, n_Z = 3
+    tercile 'low': 224 days (full-sample Z_IVS_1 labels)
+    tercile 'mid': 193 days (full-sample Z_IVS_1 labels)
+    tercile 'high': 207 days (full-sample Z_IVS_1 labels)
+  [CME] 1000/1000 replicates returned, 1000 flagged converged
+
+  [DER] Loaded 1317 daily RNDs at tau=27d
+  [DER] 765 aligned days, n_Z = 3
+    tercile 'low': 257 days (full-sample Z_IVS_1 labels)
+    tercile 'mid': 254 days (full-sample Z_IVS_1 labels)
+    tercile 'high': 254 days (full-sample Z_IVS_1 labels)
+  [DER] 1000/1000 replicates returned, 1000 flagged converged
+
+  Curvature coefficient c by tercile (point [95% CI], P(c<0)):
+     CME  low: -17.400 [-26.719, -12.197]  P(c<0) = 1.000
+     CME  mid: -12.142 [-18.163, -7.347]  P(c<0) = 1.000
+     CME high: -9.636 [-15.608, -2.839]  P(c<0) = 0.996
+     DER  low: -16.817 [-23.823, -12.837]  P(c<0) = 1.000
+     DER  mid: -11.530 [-15.641, -8.028]  P(c<0) = 1.000
+     DER high: -8.601 [-12.587, -2.958]  P(c<0) = 0.995
+
+
+======================================================================
+  Phase 3c: Joint Regime Test  
+  Joint bootstrap test of kernel regime-dependence (low vs high)
+  spec = crypto; reads existing 4b draws (no re-estimation)
+================================================================
+
+  [CME]  (B = 1000 converged replicates)
+    (A) JOINT H0: (b,c,d)_low = (b,c,d)_high
+        Wald = 24.59,  bootstrap p = 0.0090  **
+        mean vector diff: db=+15.193, dc=-9.094, dd=+1.131
+        replicates preserving full-vector ordering: 91.4%
+
+    (B) per-coefficient low - high [95% CI], P(diff<0):
+        b: +15.193 [+7.587, +29.988]  P<0 = 0.000
+        c: -9.094 [-19.878, -3.115]  P<0 = 0.993
+        d: +1.131 [-0.602, +3.628]  P<0 = 0.086
+
+    (C) curvature at money (2c+6d|R=1), low - high: -11.405 [-19.985, -7.418]  P<0 = 1.000
+
+  [DER]  (B = 1000 converged replicates)
+    (A) JOINT H0: (b,c,d)_low = (b,c,d)_high
+        Wald = 14.23,  bootstrap p = 0.0310  *
+        mean vector diff: db=+15.373, dc=-9.598, dd=+1.381
+        replicates preserving full-vector ordering: 99.0%
+
+    (B) per-coefficient low - high [95% CI], P(diff<0):
+        b: +15.373 [+8.339, +27.354]  P<0 = 0.000
+        c: -9.598 [-18.634, -4.541]  P<0 = 1.000
+        d: +1.381 [+0.169, +3.418]  P<0 = 0.010
+
+    (C) curvature at money (2c+6d|R=1), low - high: -10.911 [-18.799, -6.977]  P<0 = 1.000
+
+
+  [checkpoint] CME: Wald = 24.59, p = 0.0090
+  [checkpoint] DER: Wald = 14.23, p = 0.0310
+
+============================================================
+  Phase 3 robustness: KDE+GPD tilting density (crypto spec)
+============================================================
+  [CME | tilt = enhanced]
+    Estimating: venue=CME, spec=crypto_enhanced, T=624, n_Z=3, n_params=12
+    Using warm-start initialization
+    Converged: True, KL total=-175.3700, KL mean=-0.281042
+    Final |grad|_inf = 1.30e-03
+
+  [CME | tilt = kde]
+    Estimating: venue=CME, spec=crypto_kde, T=624, n_Z=3, n_params=12
+    Using warm-start initialization
+    Converged: True, KL total=-190.1279, KL mean=-0.304692
+    Final |grad|_inf = 1.82e-03
+
+  [DER | tilt = enhanced]
+    Estimating: venue=DER, spec=crypto_enhanced, T=765, n_Z=3, n_params=12
+    Using warm-start initialization
+    Converged: True, KL total=-191.4485, KL mean=-0.250259
+    Final |grad|_inf = 7.36e-03
+
+  [DER | tilt = kde]
+    Estimating: venue=DER, spec=crypto_kde, T=765, n_Z=3, n_params=12
+    Using warm-start initialization
+    Converged: True, KL total=-208.2287, KL mean=-0.272194
+    Final |grad|_inf = 6.22e-04
+
+  Curvature at the money by tilting density:
+venue tercile  curv_enh  curv_kde  curv_delta  curv_sign_agrees
+  CME     low    -8.799    -8.900      -0.101              True
+  CME     mid    -5.180    -4.443       0.737              True
+  CME    high     1.053     2.881       1.828              True
+  DER     low    -7.101    -7.149      -0.048              True
+  DER     mid    -3.486    -2.657       0.829              True
+  DER    high     2.312     4.261       1.948              True
+
+  [checkpoint] curvature-at-money sign agreement: 6/6 venue-tercile cells; max |delta| = 1.948
+
+============================================================
+  Phase 4: BKM Extraction & CL20 Decomposition
+  Window: 2020-01-13 -> 2023-08-31
+  theta baseline = 2.0; weights = (1.0, -1.0, 1.0)
+============================================================
+
+  Loading 8,913 parameter rows fitted SSVI
+
+  CME: 65,598 options, 802 days
+  CME BKM extraction complete: 629/772 days
+
+  DER: 135,081 options, 1327 days
+  DER BKM extraction complete: 1317/1327 days
+
+  Saved BKM moments: 1946 day-venue pairs
+
+  Computing rolling physical variance (252-day window)...
+  Physical variance available: 2131 days
+
+  Computing CL20 contributions at theta=2.0...
+  Saved cumulant premia: 1946 rows
+
+  Matched CME-Deribit days: 624 (1248 venue-day rows)
+
+  Regime-conditional decomposition — MATCHED DAYS (headline)...
+venue        regime  n_days   Pi_2   Pi_3   Pi_4  lb_total  share_var  share_skew  share_kurt  mean_vrp
+  CME unconditional     624 0.0504 0.0174 0.0291    0.0969     0.5200      0.1798      0.3002    0.0119
+  DER unconditional     624 0.0540 0.0194 0.0324    0.1057     0.5106      0.1834      0.3060    0.0153
+  CME           low     224 0.0257 0.0053 0.0074    0.0384     0.6689      0.1388      0.1923   -0.0033
+  CME           mid     193 0.0456 0.0144 0.0210    0.0810     0.5635      0.1776      0.2589    0.0073
+  CME          high     207 0.0818 0.0335 0.0604    0.1757     0.4656      0.1906      0.3438    0.0319
+  DER           low     224 0.0275 0.0062 0.0087    0.0424     0.6476      0.1468      0.2056   -0.0017
+  DER           mid     193 0.0486 0.0156 0.0229    0.0871     0.5579      0.1787      0.2633    0.0102
+  DER          high     207 0.0877 0.0372 0.0667    0.1916     0.4577      0.1941      0.3482    0.0375
+
+  Regime-conditional decomposition — ALL DAYS (supplementary)...
+venue        regime  n_days   Pi_2   Pi_3   Pi_4  lb_total  share_var  share_skew  share_kurt  mean_vrp
+  CME unconditional     629 0.0506 0.0176 0.0295    0.0977     0.5178      0.1805      0.3017    0.0119
+  DER unconditional    1317 0.0558 0.0205 0.0348    0.1111     0.5018      0.1847      0.3135    0.0151
+  CME           low     225 0.0257 0.0053 0.0074    0.0384     0.6694      0.1384      0.1921   -0.0033
+  CME           mid     195 0.0455 0.0144 0.0210    0.0809     0.5628      0.1778      0.2594    0.0069
+  CME          high     209 0.0824 0.0341 0.0615    0.1779     0.4630      0.1915      0.3455    0.0321
+  DER           low     257 0.0272 0.0061 0.0085    0.0419     0.6502      0.1458      0.2039   -0.0015
+  DER           mid     254 0.0482 0.0155 0.0229    0.0866     0.5566      0.1791      0.2643    0.0096
+  DER          high     254 0.0861 0.0359 0.0639    0.1859     0.4632      0.1930      0.3439    0.0363
+
+  [NOTE] LaTeX: source the headline cross-venue table from cyl_decomposition_matched.csv; cyl_decomposition.csv (all days) is supplementary.
+
+  Theta robustness sweep (matched days)...
+venue  theta  lambda_1  lambda_2  lambda_3  mean_Pi_2  mean_Pi_3  mean_Pi_4  mean_lb_total  lb_annualized_pct
+  CME    1.0       1.0   -0.6667    0.5000     0.0504     0.0116     0.0145         0.0765           103.4653
+  DER    1.0       1.0   -0.6667    0.5000     0.0540     0.0129     0.0162         0.0831           112.3251
+  CME    2.0       1.0   -1.0000    1.0000     0.0504     0.0174     0.0291         0.0969           130.9770
+  DER    2.0       1.0   -1.0000    1.0000     0.0540     0.0194     0.0324         0.1057           142.9301
+  CME    3.0       1.0   -1.3333    1.6667     0.0504     0.0232     0.0485         0.1221           165.0423
+  DER    3.0       1.0   -1.3333    1.6667     0.0540     0.0258     0.0539         0.1338           180.8249
+
+  Kappa-bound sensitivity (matched days)...
+venue  kappa_bound  n_days   Pi_2   Pi_3   Pi_4  lb_total  share_var  share_skew  share_kurt  lb_annualized_pct
+  CME         1.00     624 0.0491 0.0141 0.0213    0.0844     0.5810      0.1665      0.2526           114.1592
+  CME         1.25     624 0.0499 0.0161 0.0257    0.0917     0.5442      0.1753      0.2805           123.9851
+  CME         1.50     624 0.0504 0.0174 0.0291    0.0969     0.5200      0.1798      0.3002           130.9770
+  DER         1.00     624 0.0525 0.0154 0.0233    0.0912     0.5749      0.1693      0.2558           123.3341
+  DER         1.25     624 0.0534 0.0178 0.0284    0.0996     0.5366      0.1786      0.2849           134.6288
+  DER         1.50     624 0.0540 0.0194 0.0324    0.1057     0.5106      0.1834      0.3060           142.9301
+
+  Moment summary:
+        var_Q          skew_Q          ...    Pi_4             vrp        
+         mean     std    mean     std  ...    mean     std    mean     std
+venue                                  ...                                
+CME    0.0498  0.0297 -1.0051  0.5152  ...  0.0295  0.0375  0.0119  0.0270
+DER    0.0549  0.0332 -0.9960  0.5329  ...  0.0348  0.0464  0.0151  0.0306
+
+[2 rows x 14 columns]
+
+  [checkpoint] CME kurtosis share = 0.300
+  [checkpoint] DER kurtosis share = 0.306
+
+============================================================
+  CL24 Regional Decomposition of the CL20 Bound (theta = 2)
+============================================================
+  CL20 weights (lambda_1, lambda_2, lambda_3) = (+1.000, -1.000, +1.000)
+  [CME] 624 days; regional additivity exact
+  [DER] 1317 days; regional additivity exact
+
+  Unconditional regional composition of the bound:
+venue region   Pi_2    Pi_3   Pi_4  LB_region  share_of_LB
+  CME   down 0.0240  0.0115 0.0066     0.0421       0.7818
+  CME center 0.0015  0.0000 0.0000     0.0015       0.0279
+  CME     up 0.0128 -0.0044 0.0018     0.0103       0.1904
+  CME  total 0.0383  0.0071 0.0084     0.0539       1.0000
+  DER   down 0.0259  0.0126 0.0073     0.0458       0.7851
+  DER center 0.0015  0.0000 0.0000     0.0015       0.0253
+  DER     up 0.0139 -0.0049 0.0020     0.0111       0.1896
+  DER  total 0.0412  0.0077 0.0093     0.0583       1.0000
+
+  Regional LB wedge (DER - CME), NW(27):
+region    wedge   t_stat stars  n_days
+  down  0.00281  6.14567   ***     619
+center -0.00002 -3.20968   ***     619
+    up  0.00067  7.22144   ***     619
+ total  0.00347  6.41321   ***     619
+
+  [checkpoint] LB wedge   down: +0.00281 (t = +6.15)***
+  [checkpoint] LB wedge center: -0.00002 (t = -3.21)***
+  [checkpoint] LB wedge     up: +0.00067 (t = +7.22)***
+  [checkpoint] LB wedge  total: +0.00347 (t = +6.41)***
+
+
+============================================================
+  Phase 5: Cross-Venue Analysis
+  Window: 2020-01-13 -> 2023-08-31
+============================================================
+
+  Component 1: Conditional MFK by volatility tercile...
+    unconditional: 619 days, peak Ψ = 0.1609, min Ψ = -0.0673
+    low: 223 days, peak Ψ = 0.2454, min Ψ = -0.0464
+    mid: 191 days, peak Ψ = 0.1382, min Ψ = -0.0643
+    high: 205 days, peak Ψ = 0.0905, min Ψ = -0.0935
+
+C:\Projects\bitcoin-risk-premia\.venv\Lib\site-packages\pandas\io\parquet.py:191: UserWarning: The DataFrame has column names of mixed type. They will be converted to strings and not roundtrip correctly. able = self.api.Table.from_pandas(df, **from_pandas_kwargs)
+
+  Component 2: Cumulant premium regressions...
+  (2a) Matched-difference regressions (HEADLINE, NW lags=27):
+
+    ΔPi_2 (n=621):
+         const (venue wedge): +0.00357 (0.00042) [+8.557]***
+                     Z_IVS_1: +0.00242 (0.00220) [+1.101]
+                          rv: +0.00099 (0.00120) [+0.825]
+                         fng: -0.00087 (0.00061) [-1.439]
+                          R²: 0.1314
+
+    ΔPi_3 (n=621):
+         const (venue wedge): +0.00196 (0.00057) [+3.419]***
+                     Z_IVS_1: +0.00311 (0.00386) [+0.805]
+                          rv: +0.00135 (0.00175) [+0.768]
+                         fng: -0.00153 (0.00104) [-1.475]
+                          R²: 0.1124
+
+    ΔPi_4 (n=621):
+         const (venue wedge): +0.00326 (0.00104) [+3.141]***
+                     Z_IVS_1: +0.00558 (0.00679) [+0.821]
+                          rv: +0.00237 (0.00285) [+0.833]
+                         fng: -0.00267 (0.00189) [-1.411]
+                          R²: 0.1093
+
+  (2b) Pooled panel, Driscoll-Kraay (secondary):
+
+  Pooled panel (Driscoll-Kraay) results:
+
+    Pi_2:
+                const: +0.05058 (0.00059) [+85.206]***
+                  DER: +0.00360 (0.00041) [+8.709]***
+              Z_IVS_1: +0.02786 (0.00091) [+30.727]***
+                   rv: +0.00041 (0.00062) [+0.665]
+                  fng: -0.00423 (0.00077) [-5.511]***
+          DER×Z_IVS_1: +0.00245 (0.00222) [+1.105]
+               DER×rv: +0.00098 (0.00121) [+0.809]
+              DER×fng: -0.00084 (0.00060) [-1.393]
+                   R²: 0.9504
+                    N: 1245
+
+    Pi_3:
+                const: +0.01762 (0.00102) [+17.347]***
+                  DER: +0.00200 (0.00057) [+3.503]***
+              Z_IVS_1: +0.01421 (0.00190) [+7.465]***
+                   rv: +0.00167 (0.00114) [+1.466]
+                  fng: -0.00704 (0.00135) [-5.224]***
+          DER×Z_IVS_1: +0.00314 (0.00388) [+0.809]
+               DER×rv: +0.00134 (0.00177) [+0.755]
+              DER×fng: -0.00145 (0.00103) [-1.408]
+                   R²: 0.6782
+                    N: 1245
+
+    Pi_4:
+                const: +0.02935 (0.00193) [+15.205]***
+                  DER: +0.00331 (0.00104) [+3.193]***
+              Z_IVS_1: +0.03036 (0.00331) [+9.166]***
+                   rv: +0.00068 (0.00228) [+0.298]
+                  fng: -0.00721 (0.00201) [-3.579]***
+          DER×Z_IVS_1: +0.00563 (0.00682) [+0.825]
+               DER×rv: +0.00235 (0.00287) [+0.819]
+              DER×fng: -0.00259 (0.00188) [-1.374]
+                   R²: 0.7329
+                    N: 1245
+
+  (2c) Legacy stacked-panel HAC (comparison only):
+
+  Component 3: Regional MFK integration...
+       regime  n_days  mean_down  mean_mid  mean_up  se_down  se_mid  se_up  lo_down  hi_down  lo_mid  hi_mid  lo_up  hi_up
+unconditional     619     0.0308   -0.0069   0.0827   0.0051  0.0012 0.0163   0.0210   0.0417 -0.0093 -0.0045 0.0565 0.1182
+          low     223     0.0298   -0.0024   0.1038   0.0110  0.0013 0.0459   0.0106   0.0554 -0.0049  0.0004 0.0353 0.2055
+          mid     191     0.0318   -0.0062   0.0735   0.0065  0.0009 0.0119   0.0198   0.0458 -0.0082 -0.0046 0.0501 0.0969
+         high     205     0.0309   -0.0124   0.0682   0.0037  0.0011 0.0088   0.0230   0.0376 -0.0145 -0.0099 0.0481 0.0826
+
+
+  [checkpoint] Driscoll-Kraay panel: 
+    Pi_2: beta = +0.00357 (t = +8.557)***
+    Pi_3: beta = +0.00196 (t = +3.419)***
+    Pi_4: beta = +0.00326 (t = +3.141)***
+
+============================================================
+  Phase 5 extension 2: Friction-proxy regressions
+============================================================
+
+  Matched days with both frictions on the common window: 621
+  Date range: 2020-01-16 -> 2023-08-31
+
+  corr(CME basis, Deribit funding) = +0.135  (low — both safe in one regression)
+
+  Newey-West(27) regressions of ΔΠ_k on standardized frictions:
+
+    d_Pi_2  (n=621):
+      [joint]  const=+0.00354***, cme_basis=+0.00071, der_funding=-0.00120   R²=0.019
+
+    d_Pi_3  (n=621):
+      [joint]  const=+0.00191***, cme_basis=+0.00084, der_funding=-0.00266   R²=0.039
+
+    d_Pi_4  (n=621):
+      [joint]  const=+0.00318***, cme_basis=+0.00072, der_funding=-0.00448   R²=0.033
+
+============================================================
+  Phase 5 extension: Inverse-Contract Numeraire Prediction
+============================================================
+
+  Window: 2020-01-13 -> 2023-08-31
+  theta = 2.0; kappa bound = 1.5; tau = 27d
+  BKM grid: R in [0.202, 4.953] (2000 pts, |ln R| up to 1.60)
+  Matched CME-Deribit density days: 619
+
+  Predicted vs measured cumulant-premium wedge (DER - CME):
+                        predicted               measured   residual
+    Pi_2   -0.00367 [-0.0051,-0.0023] +0.00292 [+0.0020,+0.0038] +0.00659
+    Pi_3   -0.01599 [-0.0207,-0.0120] +0.00092 [+0.0005,+0.0013] +0.01690
+    Pi_4   -0.00374 [-0.0053,-0.0022] +0.00139 [+0.0008,+0.0020] +0.00513
+
+  Sign agreement: 0/3 cumulants. Contract design predicts the WRONG sign at 3 of 3 orders — the friction is real and amplified by a mechanical effect of opposite sign.
+  [checkpoint] sign agreement measured vs predicted: 0/3
+
+======================================================================
+===================  Phase 5d: No-Trade Band Test  ===================
+======================================================================
+
+  Daily variance wedge: 621 matched days, mean +0.00354
+  [CME] 15,610 options near tau=27; quoted spreads available: False
+  [DER] 52,745 options near tau=27; quoted spreads available: False
+
+    [CME] half-spread source: quoted (per-row bid/offer)
+    [DER] half-spread source: calibrated rel=0.0050 (ASSUMPTION)
+
+  |wedge| vs round-trip band (kappa = 2, spread x1):
+   ean |wedge| = 0.00629  mean band = 0.00921  inside band on 70.7% of days
+
+  [checkpoint] |wedge| inside round-trip band on 70.7% of days (mean band 0.00921 vs mean |wedge| 0.00629)
+
+
+======================================================================
+===============  Phase 5e: Async-Orthogonality Check  ================
+======================================================================
+
+  Daily wedges: 621 matched days (2020-01-16 -> 2023-08-31)
+  Raw trades on matched days: 5,167,426 (columns mapped: {'timestamp': 'timestamp', 'index_price': 'index_price_usd', 'amount': 'amount'})
+  Proxies built for 621 days; async_move coverage 100.0%; mean |move| = 1.7027%
+
+  Orthogonality regressions (NW-27):
+    dPi_2: alpha = +0.00001 (t=+0.00) [uncond wedge +0.00354]; beta_async = -0.0545 (t=-1.93)*  R2=0.073
+    dPi_3: alpha = -0.00335 (t=-0.90) [uncond wedge +0.00191]; beta_async = -0.0460 (t=-1.15)  R2=0.066
+    dPi_4: alpha = -0.00578 (t=-0.87) [uncond wedge +0.00318]; beta_async = -0.0905 (t=-1.15)  R2=0.061
+
+  [checkpoint] dPi_2 on async_move: beta = -0.0545 (t = -1.93) -> NOT orthogonal
+
+============================================================
+  Wedge Term Structure (tau in {14, 27, 60})
+============================================================
+    [CME tau=14] 211 days extracted, 561 dropped by maturity guard
+    [DER tau=14] 1302 days extracted, 25 dropped by maturity guard
+  [tau=14] 206 matched days
+
+    [CME tau=27] 629 days extracted, 143 dropped by maturity guard
+    [DER tau=27] 1317 days extracted, 10 dropped by maturity guard
+  [tau=27] 624 matched days
+
+    [CME tau=60] 732 days extracted, 40 dropped by maturity guard
+    [DER tau=60] 1327 days extracted, 0 dropped by maturity guard
+  [tau=60] 732 matched days
+
+ tau_days  order   wedge      se  t_stat  p_value stars  n_days
+       14      2 0.00504 0.00126 3.98492  0.00007   ***     206
+       14      3 0.00207 0.00132 1.56424  0.11776           206
+       14      4 0.00313 0.00230 1.36159  0.17333           206
+       27      2     NaN     NaN     NaN      NaN           624
+       27      3     NaN     NaN     NaN      NaN           624
+       27      4     NaN     NaN     NaN      NaN           624
+       60      2 0.00568 0.00100 5.65885  0.00000   ***     732
+       60      3 0.00460 0.00100 4.60282  0.00000   ***     732
+       60      4 0.00904 0.00189 4.78079  0.00000   ***     732
+
+  [checkpoint] dPi_2 wedge by maturity: tau=14: +0.00504(t=+3.98)***; tau=27: +nan(t=+nan)nan; tau=60: +0.00568(t=+5.66)***
+
+============================================================
+  Stress-Event Dynamics of the Cumulant Wedge
+============================================================
+  Daily wedges: 621 matched days
+
+  dPi_2: const=+0.00307(t=+5.59)***  COVID=+0.01099(t=+3.23)***  Terra=+0.00583(t=+5.92)***  FTX=-0.00160(t=-1.55)
+  dPi_3: const=+0.00114(t=+3.11)***  COVID=+0.01699(t=+2.60)***  Terra=+0.00751(t=+6.84)***  FTX=+0.00054(t=+0.59)
+  dPi_4: const=+0.00180(t=+3.20)***  COVID=+0.03386(t=+2.84)***  Terra=+0.01175(t=+6.86)***  FTX=+0.00080(t=+0.46)
+
+  [checkpoint] Stress-event table: stress_event_regressions.csv (1.1 KB)
+  [checkpoint] dPi_2 event dummies significant at 5%: 2/3
+
+  [Phase 5g: Stress-Event Dynamics] completed in 0.5s
+
+
+======================================================================
+  PIPELINE SUMMARY
+======================================================================
+  Phase                                           Status       Time
+  --------------------------------------------- -------- ----------
+  Phase 1a: SSVI Surface Fitting                      OK     4m 39s
+  Phase 1b: RND Extraction (Figlewski tails)          OK 1h 33m 12s
+  Phase 1c: CP Tensor Decomposition                   OK    18m 14s
+  Phase 1d: Conditioning Vectors                      OK       0.1s
+  Phase 2: Physical Density & EP Decomp               OK    50m 26s
+  Phase 2b: NB-Sweep Diagnostic (appendix)            OK    51m 30s
+  Phase 2c: Grid-Sensitivity Diagnostic (appx)        OK       8.1s
+  Phase 2d: Kernel Hump Significance Test             OK     9m 56s
+  Phase 2e: BVRP State Decomposition                  OK     9m 55s
+  Phase 3: Conditional Pricing Kernel                 OK     8m 17s
+  Phase 3b: Kernel Bootstrap (heavy)                  OK 16h 21m 24s
+  Phase 3c: Joint Regime Test                         OK       0.0s
+  Phase 3d: Kernel Robustness (KDE tilt, appx)        OK     3m 41s
+  Phase 4: BKM / CL20 Decomposition                   OK    34m 48s
+  Phase 4b: CL24 Regional Decomposition               OK       1.5s
+  Phase 5: Cross-Venue Analysis                       OK      12.7s
+  Phase 5b: Friction-Proxy Regressions                OK       0.5s
+  Phase 5c: Inverse-Contract Extension                OK       0.9s
+  Phase 5d: No-Trade Band Test                        OK      25.7s
+  Phase 5e: Async-Orthogonality Check                 OK      14.1s
+  Phase 5f: Wedge Term Structure                      OK 1h 25m 51s
+  Phase 5g: Stress-Event Dynamics                     OK       0.5s
+  --------------------------------------------- -------- ----------
+
+
+======================================================================
+  POST-RUN CHECKLIST (manual, before updating the LaTeX)
+======================================================================
+
+    Verify against the NEW CSVs — never carry numbers forward from memory.
+
+    1. CP rank: R = 1 across all seeds (tensor_pca_diagnostics_almeida.csv)
+    2. CL20 weights at theta = 2: (1, -1, 1) (cyl tables)
+    3. Kurtosis share ~ 30%, stable across kappa (kappa_sensitivity.csv)
+    4. EP totals: enhanced ~ vanilla; both bracketed by KDE and the
+        raw-moment anchor (ep_bootstrap_ci.csv, ep_decomposition_summary.csv)
+    5. NB sweep: enhanced strictly stabler than vanilla
+        (nb_sweep_summary.csv); published bounds bind (sigma_binding_check.csv)
+    6. Grid sensitivity: how much of the anchor gap closes on [0.30, 2.60]
+        (grid_sensitivity.csv)
+    7. Kernel: (b,c,d) params, tercile_labels present in npz, mean-one
+        normalization diagnostics printed by Phase 3
+    8. Joint regime test: Wald + curvature-at-money (joint_regime_test_*.csv)
+        — the formal basis for any hump-regime claim
+    9. Macro/full convergence status: if the fixed p-hat lets them converge,
+        the non-convergence narrative must be rewritten
+    10. Venue wedges: variance significant; skew/kurt per new run; no state
+        interactions (matched_difference_regressions.csv)
+    11. CL24 regional: shares sum to 1 per venue; regional LB wedge pattern
+        (cl24_regional.csv, cl24_regional_wedge.csv)
+    12. Frictions all insignificant under the 1/5/10 star convention
+        (friction_regressions.csv)
+    13. Inverse contract: sign agreement count (inverse_contract_wedge.csv)
+    14. MFK: tent shape within block-bootstrap bands (fig_mfk_unconditional)
+    15. No-trade band: fraction of days |wedge| inside the round-trip cost
+        band; CME leg quoted, Deribit leg calibrated -> use the break-even
+        framing for Deribit (notrade_band_summary.csv)
+    16. Async orthogonality: beta on async_move insignificant AND alpha
+        reproduces the unconditional wedge (async_orthogonality.csv)
+    17. KDE-tilt: curvature-at-money signs and low/mid/high ranking stable
+        across tilting densities (kde_tilt_robustness.csv)
+        
