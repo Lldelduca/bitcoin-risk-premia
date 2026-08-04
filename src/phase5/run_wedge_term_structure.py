@@ -5,10 +5,6 @@ Phases 4-5 measure the cross-venue cumulant wedge at tau = 27 only. This script 
 Pi_k = lambda_{k-1} INT (ln R)^k q_t dR (theta = 2 weights, identical construction per maturity) from the SAVED
 daily RNDs at tau in {14, 27, 60}, and estimates the matched-day wedge DER - CME per (tau, k) with NW(27) errors. 
 
-Note: Pi levels here use the RND-integral route (vs Phase 4's BKM surface route with kappa bounds), so levels can differ 
-slightly from the headline at tau = 27; the tau = 27 WEDGE should nonetheless reproduce the headline sign and significance
-printed as a consistency check.
-
 """
 import numpy as np
 import pandas as pd
@@ -18,35 +14,65 @@ from pathlib import Path
 
 from src.config import get_path, get_return_grid
 from src.phase4.cumulant_premia import cyl_weights
+from src.phase1.ssvi import SSVI
+from src.phase4.bkm_moments import extract_bkm_moments
 
 R_GRID = get_return_grid()
 TAUS = [14, 27, 60]
 NW_LAGS = 27
-
+KAPPA_BOUND = 1.5
 
 def _stars(p):
     return "***" if p < 0.01 else "**" if p < 0.05 else "*" if p < 0.10 else ""
 
+def _load_ssvi_params():
+    params = pd.read_parquet(get_path("data_phase1") / "ssvi_params.parquet")
+    params["date"] = pd.to_datetime(params["date"])
+    return params
 
-def _daily_premia(venue, tau_days, lam):
-    df = pd.read_parquet(get_path("data_phase1") / f"rnd_{venue}_densities.parquet")
+def _load_options(venue):
+    key = "cleaned_cme" if venue == "CME" else "cleaned_deribit"
+    df = pd.read_parquet(get_path(key))
     df["date"] = pd.to_datetime(df["date"])
-    df = df[df["tau_days"] == tau_days].sort_values("date")
-    x = np.log(R_GRID)
-    dates, rows = [], []
-    for _, r in df.iterrows():
-        q = np.interp(R_GRID, np.array(r["returns"]), np.array(r["density"]),
-                      left=0, right=0)
-        m = np.trapezoid(q, R_GRID)
-        if m <= 0:
+    return df
+
+def _daily_premia(venue, tau_days, lam, params=None, opts=None):
+    """CL20 contributions by BKM spanning, matching the Phase 4 route."""
+    if params is None:
+        params = _load_ssvi_params()
+    if opts is None:
+        opts = _load_options(venue)
+    pv = params[params["venue"] == venue]
+    has_fwd = "forward" in pv.columns and pv["forward"].notna().all()
+    tau_years = tau_days / 365.25
+
+    dates, rows, n_guard = [], [], 0
+    for date in sorted(pv["date"].unique()):
+        params_day = pv[pv["date"] == date]
+        try:
+            forward_map = None
+            if not has_fwd:
+                df_day = opts[opts["date"] == date]
+                if df_day.empty:
+                    continue
+                forward_map = df_day.groupby("tau")["forward_price"].mean()
+            ssvi = SSVI.from_params(params_day, forward_map=forward_map,
+                                    venue=venue, date=date)
+            fitted = np.array(ssvi.res["maturities"]) * 365.25
+            if tau_days < fitted.min() * 0.8 or tau_days > fitted.max() * 1.2:
+                n_guard += 1
+                continue
+            b = extract_bkm_moments(ssvi, tau_years, n_strikes=500,
+                                    r=0.0, kappa_bound=KAPPA_BOUND)
+        except Exception:
             continue
-        q /= m
-        dates.append(r["date"])
-        rows.append([lam[k - 2] * np.trapezoid(q * x ** k, R_GRID)
-                     for k in (2, 3, 4)])
+        dates.append(date)
+        rows.append([lam[0] * b.V, lam[1] * b.W, lam[2] * b.X])
+
+    print(f"    [{venue} tau={tau_days}] {len(rows)} days extracted, "
+          f"{n_guard} dropped by maturity guard")
     return pd.DataFrame(rows, columns=["Pi_2", "Pi_3", "Pi_4"],
                         index=pd.DatetimeIndex(dates))
-
 
 def run_wedge_term_structure():
     # Corrected: Standardized hardcoded output layout strings
@@ -61,10 +87,12 @@ def run_wedge_term_structure():
     print("  Wedge Term Structure (tau in {14, 27, 60})")
     print("=" * 60)
 
+    params = _load_ssvi_params()
+    opts = {v: _load_options(v) for v in ("CME", "DER")}
     rows = []
     for tau in TAUS:
-        pc = _daily_premia("CME", tau, lam)
-        pdd = _daily_premia("DER", tau, lam)
+        pc = _daily_premia("CME", tau, lam, params, opts["CME"])
+        pdd = _daily_premia("DER", tau, lam, params, opts["DER"])
         common = pc.index.intersection(pdd.index)
         if len(common) < 50:
             print(f"  [tau={tau}] only {len(common)} matched days — skipped")

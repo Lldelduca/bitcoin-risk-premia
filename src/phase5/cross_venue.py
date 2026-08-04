@@ -54,7 +54,7 @@ def compute_conditional_mfk(rnd_cme_path, rnd_der_path, tercile_labels, tau_days
         q_c = np.maximum(q_c, 1e-20)
         q_d = np.maximum(q_d, 1e-20)
 
-        psi = np.log(q_c / q_d)
+        psi = np.log(q_d / q_c)
         daily_psi[date] = psi
 
     psi_df = pd.DataFrame(daily_psi, index=R_grid).T

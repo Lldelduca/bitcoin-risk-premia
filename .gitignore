@@ -5,15 +5,8 @@ __pycache__/
 .pytest_cache/
 
 # Data and Models (CRITICAL)
-data/raw/cme/
-data/raw/deribit/
-data/raw/hyperliquid/
-data/raw/auxiliary/
-data/cleaned/
-data/surfaces/
+data/
 *.parquet
-*.csv
-*.h5
 
 # LaTeX Build Files
 thesis/*.aux
