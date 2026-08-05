@@ -20,12 +20,9 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 
 from src.config import get_path, get_return_grid, get_seed
-from src.phase2.physical_density import (
-    estimate_physical_density_almeida_from_returns,
-    compute_overlapping_returns)
-from src.phase2.run_phase2 import (load_spot_prices,
-                                   load_daily_rnds_from_parquet,
-                                   compute_average_rnd)
+from src.phase2.physical_density import (estimate_physical_density_almeida_from_returns,compute_overlapping_returns)
+from src.phase2.run_phase2 import (load_spot_prices, load_daily_rnds_from_parquet,
+                                   compute_average_rnd, intersect_venue_dates)
 
 R_GRID = get_return_grid()
 R_PLOT = np.arange(R_GRID[0], R_GRID[-1] + 0.001, 0.01)
@@ -85,9 +82,12 @@ def run_bvrp_decomposition(B=B):
                 "vanilla": dens["p_vanilla"],
                 "kde": dens["p_kde"]}
     rnds, qbar = {}, {}
+    dates_cme, rnds_cme = load_daily_rnds_from_parquet("CME", tau_days=27)
+    dates_der, rnds_der = load_daily_rnds_from_parquet("DER", tau_days=27)
+    dates_cme, rnds_cme, dates_der, rnds_der = intersect_venue_dates(dates_cme, rnds_cme, dates_der, rnds_der)
+    rnds["CME"], rnds["DER"] = np.stack(rnds_cme), np.stack(rnds_der)
+
     for venue in ["CME", "DER"]:
-        _, r = load_daily_rnds_from_parquet(venue, tau_days=27)
-        rnds[venue] = np.stack(r)
         qbar[venue] = compute_average_rnd(list(rnds[venue]))
 
     rows, curves = [], {}
@@ -193,8 +193,7 @@ def run_bvrp_decomposition(B=B):
     plt.savefig(FIG / "fig_bvrp_curve.png", dpi=150)
     plt.close()
 
-    # Figure 2: cumulative LEVEL (not share — near-zero total makes
-    # the share swing by hundreds of percent, same pathology as EP shares)
+    # Figure 2: cumulative LEVEL
     fig, ax = plt.subplots(figsize=(12, 5))
     for v, c in [("CME", "C0"), ("DER", "C1")]:
         cum_pp = 100 * np.interp(R_PLOT, R_GRID, curves[v]["cum_level"])

@@ -102,6 +102,22 @@ def compute_average_rnd(rnds):
         mean_q /= mass
     return mean_q
 
+def intersect_venue_dates(cme_dates, cme_rnds, der_dates, der_rnds):
+    common = sorted(set(cme_dates) & set(der_dates))
+    common_set = set(common)
+    cme_pairs = sorted(((d, q) for d, q in zip(cme_dates, cme_rnds) if d in common_set),
+                       key=lambda x: x[0])
+    der_pairs = sorted(((d, q) for d, q in zip(der_dates, der_rnds) if d in common_set),
+                       key=lambda x: x[0])
+    cme_dates_c = [p[0] for p in cme_pairs]
+    cme_rnds_c = [p[1] for p in cme_pairs]
+    der_dates_c = [p[0] for p in der_pairs]
+    der_rnds_c = [p[1] for p in der_pairs]
+    print(f"  Intersected to {len(common)} common matched days "
+          f"(CME {len(cme_dates)} -> {len(cme_dates_c)}, "
+          f"DER {len(der_dates)} -> {len(der_dates_c)})")
+    return cme_dates_c, cme_rnds_c, der_dates_c, der_rnds_c
+
 def bootstrap_ep_inference(spot, q_by_venue, estimator="almeida", B=EP_BOOT_B, block_length=EP_BOOT_BLOCK, seed=EP_BOOT_SEED):
     R_data = compute_overlapping_returns(spot, horizon=27)
     n = len(R_data)
@@ -177,6 +193,8 @@ def run_phase2():
     print("\n  Loading daily RNDs from parquet...")
     cme_dates, cme_rnds = load_daily_rnds_from_parquet("CME", tau_days=27)
     der_dates, der_rnds = load_daily_rnds_from_parquet("DER", tau_days=27)
+
+    cme_dates, cme_rnds, der_dates, der_rnds = intersect_venue_dates(cme_dates, cme_rnds, der_dates, der_rnds)
 
     q_cme = compute_average_rnd(cme_rnds)
     q_der = compute_average_rnd(der_rnds)

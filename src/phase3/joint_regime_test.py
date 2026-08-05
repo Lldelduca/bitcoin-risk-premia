@@ -10,9 +10,10 @@ The right question is JOINT: Does the coefficient VECTOR (b, c, d) differ across
 This module answers it by computing per venue:
 
   (A) Pairwise joint test  H0: (b,c,d)_low = (b,c,d)_high
-      via a bootstrap Wald / Mahalanobis statistic on the 3-vector difference delta = (b,c,d)_low - (b,c,d)_high, 
-      using the bootstrap covariance of delta. Reports the bootstrap p-value (fraction of recentred replicate
-      statistics exceeding the observed) and the share of replicates in which the whole-vector ordering is preserved.
+      via a bootstrap Wald / Mahalanobis statistic evaluated at the full-sample point-estimate difference
+      delta_hat = (b,c,d)_low - (b,c,d)_high, using the bootstrap covariance of delta from the resampled replicates. 
+      Reports the bootstrap p-value ((1 + #{recentred replicate statistics >= observed}) / (B + 1)) and the share of 
+      replicates in which the whole-vector ordering is preserved.
 
   (B) Per-coefficient low-vs-high difference with bootstrap CI and P(diff<0)
 
@@ -38,6 +39,16 @@ def _vec(draws, tercile):
 def _curv_at_money(draws, tercile):
     return 2.0 * draws[f"c_{tercile}"].to_numpy(float) + 6.0 * draws[f"d_{tercile}"].to_numpy(float)
 
+def _load_point_estimate(venue, spec, tercile):
+    ci_path = TAB_DIR / f"phase3_bootstrap_ci_{spec}.csv"
+    if not ci_path.exists():
+        raise FileNotFoundError(
+            f"{ci_path} not found — run run_phase3_bootstrap.py first "
+            f"(joint_regime_test needs its full-sample 'point' column).")
+    ci = pd.read_csv(ci_path)
+    sub = ci[(ci["venue"] == venue) & (ci["tercile"] == tercile)].set_index("coef")["point"]
+    return np.array([sub[c] for c in COEFS], dtype=float)
+
 def joint_regime_test(venue, spec="crypto", lo="low", hi="high", point_theta=None):
     path = DATA_P3 / f"phase3_bootstrap_draws_{venue}_{spec}.parquet"
     if not path.exists():
@@ -52,30 +63,29 @@ def joint_regime_test(venue, spec="crypto", lo="low", hi="high", point_theta=Non
     V_lo, V_hi = _vec(draws, lo), _vec(draws, hi)
 
     D = V_lo - V_hi                      # (B, 3) per-replicate vector difference
-    d_mean = D.mean(axis=0)              # observed mean difference
-    Sigma = np.cov(D, rowvar=False)      # (3,3) bootstrap covariance of the difference
+    d_boot_mean = D.mean(axis=0)
+    d_point = _load_point_estimate(venue, spec, lo) - _load_point_estimate(venue, spec, hi)
+    Sigma = np.cov(D, rowvar=False)
     Sigma_inv = np.linalg.pinv(Sigma)
 
-    # (A) Bootstrap Wald / Mahalanobis test of H0: delta = 0
-    W_obs = float(d_mean @ Sigma_inv @ d_mean)
-
-    # Null distribution: recentre the replicate differences to mean zero
-    Dc = D - d_mean
+    # (A) Bootstrap Wald / Mahalanobis test of H0: delta = 0, evaluated at the full-sample point estimate
+    W_obs = float(d_point @ Sigma_inv @ d_point)
+    Dc = D - d_boot_mean
     W_rep = np.einsum("ij,jk,ik->i", Dc, Sigma_inv, Dc)
-    p_joint = float((W_rep >= W_obs).mean())
+    p_joint = float((1 + (W_rep >= W_obs).sum()) / (len(W_rep) + 1))
 
-    # Whole-vector ordering
-    sign_point = np.sign(d_mean)
+    # Whole-vector ordering, anchored at the full-sample point estimate's sign pattern
+    sign_point = np.sign(d_point)
     same_all = np.all(np.sign(D) == sign_point, axis=1)
     frac_vector_consistent = float(same_all.mean())
 
-    # (B) Per-coefficient differences
+    # (B) Per-coefficient differences, reported at the full-sample point estimate
     per_coef = []
     for j, c in enumerate(COEFS):
         dj = D[:, j]
         per_coef.append({
             "venue": venue, "test": "per_coef_diff", "coef": c,
-            "diff_point": float(d_mean[j]),
+            "diff_point": float(d_point[j]),
             "ci_lo": float(np.quantile(dj, 0.025)),
             "ci_hi": float(np.quantile(dj, 0.975)),
             "frac_negative": float((dj < 0).mean()),
@@ -83,13 +93,14 @@ def joint_regime_test(venue, spec="crypto", lo="low", hi="high", point_theta=Non
             "B_effective": B,
         })
 
-    # (C) Curvature-at-money contrast (2c + 6d at R=1)
+    # (C) Curvature-at-money contrast (2c + 6d at R=1), full-sample point estimate
     m2_lo = _curv_at_money(draws, lo)
     m2_hi = _curv_at_money(draws, hi)
     dm2 = m2_lo - m2_hi
+    curv_point = float(2.0 * d_point[COEFS.index("c")] + 6.0 * d_point[COEFS.index("d")])
     curv = {
         "venue": venue, "test": "curv_at_money_diff", "coef": "2c+6d@R=1",
-        "diff_point": float(dm2.mean()),
+        "diff_point": curv_point,
         "ci_lo": float(np.quantile(dm2, 0.025)),
         "ci_hi": float(np.quantile(dm2, 0.975)),
         "frac_negative": float((dm2 < 0).mean()),
@@ -102,8 +113,8 @@ def joint_regime_test(venue, spec="crypto", lo="low", hi="high", point_theta=Non
         "wald_stat": W_obs, "p_value": p_joint,
         "frac_vector_consistent": frac_vector_consistent,
         "B_effective": B,
-        "delta_b": float(d_mean[0]), "delta_c": float(d_mean[1]),
-        "delta_d": float(d_mean[2]),
+        "delta_b": float(d_point[0]), "delta_c": float(d_point[1]),
+        "delta_d": float(d_point[2]),
     }
     return joint, per_coef, curv
 
@@ -124,8 +135,8 @@ def run_all(venues=("CME", "DER"), spec="crypto"):
         print(f"    (A) JOINT H0: (b,c,d)_low = (b,c,d)_high")
         print(f"        Wald = {joint['wald_stat']:.2f},  "
               f"bootstrap p = {joint['p_value']:.4f}  "
-              f"{'***' if joint['p_value']<0.001 else '**' if joint['p_value']<0.01 else '*' if joint['p_value']<0.05 else '(n.s.)'}")
-        print(f"        mean vector diff: db={joint['delta_b']:+.3f}, "
+              f"{'***' if joint['p_value']<0.01 else '**' if joint['p_value']<0.05 else '*' if joint['p_value']<0.10 else '(n.s.)'}")
+        print(f"        point vector diff: db={joint['delta_b']:+.3f}, "
               f"dc={joint['delta_c']:+.3f}, dd={joint['delta_d']:+.3f}")
         print(f"        replicates preserving full-vector ordering: "
               f"{joint['frac_vector_consistent']:.1%}")

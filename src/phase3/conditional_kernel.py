@@ -31,6 +31,8 @@ class ConditionalKernelResult(NamedTuple):
     converged: bool
     grad_inf: float 
     hessian_inv: np.ndarray | None
+    message: str
+    status: int
 
 def _unpack_theta(theta, n_Z):
     block = 1 + n_Z
@@ -109,7 +111,7 @@ def _objective(theta, R_grid, q_obs_list, p_phys, Z_matrix, n_Z):
     integrand = Q * (ln_p[None, :] + log_m)
     kl = -np.trapezoid(integrand, R_grid, axis=1) + log_Z
     kl = np.where(np.isfinite(kl) & ~bad, kl, 1e10)
-    return float(kl.sum())
+    return float(kl.mean())
 
 def estimate_conditional_kernel(
     R_grid: np.ndarray, q_obs_list: list, p_phys: np.ndarray, Z_matrix: np.ndarray, venue: str = "unknown",
@@ -141,7 +143,7 @@ def estimate_conditional_kernel(
         print(f"    Using warm-start initialization")
 
     result = minimize(_objective, theta0, args=(R_grid, q_obs_list, p_phys, Z_matrix, n_Z), method=method,
-        options={"maxiter": max_iter, "disp": False, "ftol": 1e-10})
+        options={"maxiter": max_iter, "disp": False, "ftol": 1e-10, "gtol": 1e-8})
 
     hess_inv = None
     if hasattr(result, "hess_inv"):
@@ -150,18 +152,20 @@ def estimate_conditional_kernel(
         else:
             hess_inv = np.array(result.hess_inv)
 
-    kl_total = result.fun
-    kl_mean = kl_total / T
+    kl_mean = float(result.fun)     # _objective now returns the per-day mean KL directly
+    kl_total = kl_mean * T          # recovered sum, for within-venue nested-hierarchy comparisons
     grad_inf = (float(np.max(np.abs(result.jac))) if getattr(result, "jac", None) is not None else float("nan"))
 
     if verbose:
         print(f"    Converged: {result.success}, "
               f"KL total={kl_total:.4f}, KL mean={kl_mean:.6f}")
-        print(f"    Final |grad|_inf = {grad_inf:.2e}")
+        print(f"    Final |grad|_inf (per-day scale) = {grad_inf:.2e}")
+        print(f"    Optimizer status={result.status}, message={result.message}")
 
     return ConditionalKernelResult(
     theta=result.x, n_params=n_params, n_days=T, n_Z=n_Z, venue=venue, spec_name=spec_name, kl_total=kl_total,
-    kl_mean=kl_mean, converged=result.success, grad_inf=grad_inf, hessian_inv=hess_inv)
+    kl_mean=kl_mean, converged=result.success, grad_inf=grad_inf, hessian_inv=hess_inv,
+    message=str(result.message), status=int(result.status))
 
 def coefficients_at(theta, Z_vec, n_Z):
     return _compute_coefficients(np.asarray(theta, dtype=float), np.asarray(Z_vec, dtype=float), n_Z)

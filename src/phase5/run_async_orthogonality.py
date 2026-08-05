@@ -23,10 +23,13 @@ with Newey-West(27) errors. Orthogonality holds if b1 is insignificant and alpha
 import numpy as np
 import pandas as pd
 from pathlib import Path
+import statsmodels.api as sm
 from zoneinfo import ZoneInfo
 
+from src.config import get_path
+
 NW_LAGS = 27
-MAX_GAP_MIN = 90           # max distance to the nearest trade at a query time
+MAX_GAP_MIN = 90       
 RV_RESAMPLE = "15min"
 
 TRADES_COL_CANDIDATES = {
@@ -38,30 +41,13 @@ TRADES_COL_CANDIDATES = {
 def _stars(p):
     return "***" if p < 0.01 else "**" if p < 0.05 else "*" if p < 0.10 else ""
 
-# ---------------------------------------------------------------------------
-# Pure cores (unit-testable without the repo)
-# ---------------------------------------------------------------------------
+# Pure cores 
 def cme_settle_anchor_utc(date) -> pd.Timestamp:
-    """15:00 America/Chicago on `date`, converted to naive UTC.
-
-    Uses zoneinfo so the CST/CDT switch is exact across the sample
-    (21:00 UTC in winter, 20:00 UTC in summer)."""
     local = pd.Timestamp(date).replace(hour=15, minute=0, second=0)
     local = local.tz_localize(ZoneInfo("America/Chicago"))
     return local.tz_convert("UTC").tz_localize(None)
 
-
-def daily_async_proxies(ts, index_price, amount, anchor_utc,
-                        max_gap_min=MAX_GAP_MIN):
-    """Proxies for one day of trades.
-
-    ts          : datetime64 array (UTC, naive), any order
-    index_price : float array, same length
-    amount      : float array (volume weights), same length
-    anchor_utc  : pd.Timestamp (naive UTC)
-
-    Returns dict(async_move, intraday_rv, t_vw, S_anchor, S_vw, n_trades)
-    with NaNs where a price cannot be located within max_gap_min."""
+def daily_async_proxies(ts, index_price, amount, anchor_utc, max_gap_min=MAX_GAP_MIN):
     order = np.argsort(ts)
     ts = np.asarray(ts)[order]
     px = np.asarray(index_price, dtype=float)[order]
@@ -97,18 +83,14 @@ def daily_async_proxies(ts, index_price, amount, anchor_utc,
             "t_vw": pd.Timestamp(t_vw_sec, unit="s"),
             "S_anchor": S_anchor, "S_vw": S_vw, "n_trades": len(ts)}
 
-
-def orthogonality_table(wedges: pd.DataFrame, proxies: pd.DataFrame,
-                        nw_lags=NW_LAGS) -> pd.DataFrame:
-    """wedges: DataFrame indexed by date with columns dPi_2, dPi_3, dPi_4.
-    proxies: DataFrame indexed by date with async_move, intraday_rv.
-    Returns the stacked NW regression table."""
-    import statsmodels.api as sm
+def orthogonality_table(wedges: pd.DataFrame, proxies: pd.DataFrame, nw_lags=NW_LAGS) -> pd.DataFrame:
     df = wedges.join(proxies[["async_move", "intraday_rv"]], how="inner")
     df = df.dropna()
     rows = []
     for dep in [c for c in wedges.columns if c.startswith("dPi_")]:
-        X = sm.add_constant(df[["async_move", "intraday_rv"]].values.astype(float))
+        Xraw = df[["async_move", "intraday_rv"]].values.astype(float)
+        Xc = Xraw - Xraw.mean(axis=0, keepdims=True)
+        X = sm.add_constant(Xc)
         res = sm.OLS(df[dep].values.astype(float), X).fit(
             cov_type="HAC", cov_kwds={"maxlags": nw_lags})
 
@@ -129,11 +111,7 @@ def orthogonality_table(wedges: pd.DataFrame, proxies: pd.DataFrame,
             })
     return pd.DataFrame(rows)
 
-
-# ---------------------------------------------------------------------------
 # Pipeline entry point
-# ---------------------------------------------------------------------------
-
 def _pick(df, key):
     for c in TRADES_COL_CANDIDATES[key]:
         if c in df.columns:
@@ -141,10 +119,7 @@ def _pick(df, key):
     raise KeyError(f"None of {TRADES_COL_CANDIDATES[key]} found for "
                    f"'{key}'; available: {list(df.columns)}")
 
-
 def run_async_orthogonality(trades_path=None):
-    from src.config import get_path
-
     TAB = get_path("results_phase5") / "tables"
     TAB.mkdir(parents=True, exist_ok=True)
 
@@ -216,7 +191,6 @@ def run_async_orthogonality(trades_path=None):
               f"beta_async = {b['coef']:+.4f} "
               f"(t={b['t_stat']:+.2f}){b['stars']}  R2={b['r_squared']:.3f}")
     return table
-
 
 if __name__ == "__main__":
     import argparse

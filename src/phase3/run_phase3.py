@@ -19,6 +19,7 @@ from src.phase3.conditional_kernel import (
 )
 
 from src.phase3.bootstrap_inference import block_bootstrap_mean_bands
+from src.phase2.run_phase2 import intersect_venue_dates
 
 DATA_P1 = get_path("data_phase1")
 DATA_P2 = get_path("data_phase2")
@@ -156,6 +157,11 @@ def run_phase3():
     for venue in VENUES:
         venue_rnds[venue] = load_daily_rnds_from_parquet(venue, tau_days=27)
 
+    # Restrict to the dates on which BOTH venues admit a valid density
+    cme_dates, cme_rnds, der_dates, der_rnds = intersect_venue_dates(*venue_rnds["CME"], *venue_rnds["DER"])
+    venue_rnds["CME"] = (cme_dates, cme_rnds)
+    venue_rnds["DER"] = (der_dates, der_rnds)
+
     # Full-sample volatility tercile labels (shared with Phases 4 and 5)
     tercile_df = load_volatility_tercile_labels()
     print(f"  Loaded full-sample Z_IVS_1 tercile labels: "
@@ -224,6 +230,8 @@ def run_phase3():
 
                 print(f"\n  [{key}] Converged: {result.converged}, "
                       f"KL mean={result.kl_mean:.6f}")
+                print(f"    [{key}] |grad|_inf (per-day) = {result.grad_inf:.2e}, "
+                      f"optimizer status={result.status}, message={result.message}")
                 # v2 diagnostic: the mean-one normalization must hold exactly
                 for tn in ["low", "mid", "high"]:
                     if tn in terciles and "p_mean_check" in terciles[tn]:
@@ -237,6 +245,7 @@ def run_phase3():
                     "n_days": result.n_days, "n_params": result.n_params,
                     "kl_total": result.kl_total, "kl_mean": result.kl_mean,
                     "converged": result.converged, "grad_inf": result.grad_inf,
+                    "opt_status": result.status, "opt_message": result.message,
                 }
                 for cn in ["b", "c", "d"]:
                     row[f"mean_{cn}"] = coeffs[cn].mean()
@@ -342,7 +351,7 @@ def _plot_coefficient_timeseries(coeffs, dates, venue, spec_name):
     plt.close()
 
 def _compute_and_plot_mfk(venue_rnds):
-    """Unconditional MFK: Psi(R) = log(q^CME / q^DER) averaged over matched days."""
+    """Unconditional MFK: Psi(R) = log(q^DER / q^CME) averaged over matched days."""
     print("\n  Computing unconditional MFK...")
     cme_dates, cme_rnds = venue_rnds["CME"]
     der_dates, der_rnds = venue_rnds["DER"]
@@ -355,7 +364,7 @@ def _compute_and_plot_mfk(venue_rnds):
     for _, row in merged.iterrows():
         q_c = np.maximum(cme_rnds[row["idx_c"]], 1e-20)
         q_d = np.maximum(der_rnds[row["idx_d"]], 1e-20)
-        mfk_daily.append(np.log(q_c / q_d))
+        mfk_daily.append(np.log(q_d / q_c))
 
     # Pointwise inference
     psi_mat = np.stack(mfk_daily)
@@ -379,7 +388,7 @@ def _compute_and_plot_mfk(venue_rnds):
     ax.axvspan(R_GRID[0], 0.90, alpha=0.05, color="red")
     ax.axvspan(1.10, R_GRID[-1], alpha=0.05, color="green")
     ax.set_xlabel("Gross return $R$")
-    ax.set_ylabel(r"$\Psi(R)=\log(\hat{q}^{\mathrm{CME}}/\hat{q}^{\mathrm{DER}})$")
+    ax.set_ylabel(r"$\Psi(R)=\log(\hat{q}^{\mathrm{DER}}/\hat{q}^{\mathrm{CME}})$")
     ax.set_xlim(0.50, 1.60)
     ax.set_title("Unconditional Microstructure Friction Kernel")
     ax.legend()

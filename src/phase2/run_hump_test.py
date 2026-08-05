@@ -24,8 +24,7 @@ from pathlib import Path
 from src.config import get_path, get_return_grid, get_seed
 from src.phase2.physical_density import (
     estimate_physical_density_almeida_from_returns, compute_overlapping_returns)
-from src.phase2.run_phase2 import (load_spot_prices,
-                                   load_daily_rnds_from_parquet)
+from src.phase2.run_phase2 import (load_spot_prices, load_daily_rnds_from_parquet, intersect_venue_dates)
 
 R_GRID = get_return_grid()
 B = 500
@@ -67,10 +66,10 @@ def run_hump_test(B=B):
 
     spot = load_spot_prices()
     R_data = compute_overlapping_returns(spot, horizon=27)
-    rnds = {}
-    for venue in ["CME", "DER"]:
-        _, r = load_daily_rnds_from_parquet(venue, tau_days=27)
-        rnds[venue] = np.stack(r)
+    dates_cme, rnds_cme = load_daily_rnds_from_parquet("CME", tau_days=27)
+    dates_der, rnds_der = load_daily_rnds_from_parquet("DER", tau_days=27)
+    dates_cme, rnds_cme, dates_der, rnds_der = intersect_venue_dates(dates_cme, rnds_cme, dates_der, rnds_der)
+    rnds = {"CME": np.stack(rnds_cme), "DER": np.stack(rnds_der)}
 
     rng = np.random.default_rng(SEED)
     draws_m = {v: np.empty((B, len(R_GRID))) for v in rnds}

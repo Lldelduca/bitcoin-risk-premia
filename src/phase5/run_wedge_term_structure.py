@@ -89,35 +89,60 @@ def run_wedge_term_structure():
 
     params = _load_ssvi_params()
     opts = {v: _load_options(v) for v in ("CME", "DER")}
-    rows = []
+
+    premia, common_per_tau = {}, {}
     for tau in TAUS:
         pc = _daily_premia("CME", tau, lam, params, opts["CME"])
         pdd = _daily_premia("DER", tau, lam, params, opts["DER"])
         common = pc.index.intersection(pdd.index)
+        premia[tau] = (pc, pdd)
+        common_per_tau[tau] = common
+        print(f"  [tau={tau}] {len(common)} matched days")
+
+    # Days matched at ALL THREE maturities simultaneously
+    common_all = None
+    for tau in TAUS:
+        common_all = (common_per_tau[tau] if common_all is None else common_all.intersection(common_per_tau[tau]))
+    print(f"  Common to all {len(TAUS)} maturities: {len(common_all)} days")
+
+    rows = []
+    for tau in TAUS:
+        pc, pdd = premia[tau]
+        common = common_per_tau[tau]
         if len(common) < 50:
             print(f"  [tau={tau}] only {len(common)} matched days — skipped")
             continue
+        samples = [("own", common)]
+        if len(common_all) >= 50:
+            samples.append(("common_all_tau", common_all))
         for k in (2, 3, 4):
-            delta = (pdd.loc[common, f"Pi_{k}"]
-                     - pc.loc[common, f"Pi_{k}"]).values
-            res = sm.OLS(delta, np.ones((len(delta), 1))).fit(
-                cov_type="HAC", cov_kwds={"maxlags": NW_LAGS})
-            rows.append({"tau_days": tau, "order": k,
-                         "wedge": float(res.params[0]),
-                         "se": float(res.bse[0]),
-                         "t_stat": float(res.tvalues[0]),
-                         "p_value": float(res.pvalues[0]),
-                         "stars": _stars(float(res.pvalues[0])),
-                         "n_days": len(delta)})
-        print(f"  [tau={tau}] {len(common)} matched days")
+            for sample_name, sample_idx in samples:
+                delta = (pdd.loc[sample_idx, f"Pi_{k}"]
+                         - pc.loc[sample_idx, f"Pi_{k}"]).values
+                finite = np.isfinite(delta)
+                n_dropped = int((~finite).sum())
+                if n_dropped:
+                    print(f"    [tau={tau}, k={k}, {sample_name}] dropped "
+                          f"{n_dropped} non-finite day(s) before OLS")
+                delta = delta[finite]
+                res = sm.OLS(delta, np.ones((len(delta), 1))).fit(
+                    cov_type="HAC", cov_kwds={"maxlags": NW_LAGS})
+                rows.append({"tau_days": tau, "order": k, "sample": sample_name,
+                             "wedge": float(res.params[0]),
+                             "se": float(res.bse[0]),
+                             "t_stat": float(res.tvalues[0]),
+                             "p_value": float(res.pvalues[0]),
+                             "stars": _stars(float(res.pvalues[0])),
+                             "n_days": len(delta)})
 
     tbl = pd.DataFrame(rows)
     tbl.to_csv(TAB / "wedge_term_structure.csv", index=False)
     print("\n" + tbl.round(5).to_string(index=False))
 
     fig, ax = plt.subplots(figsize=(8, 4.5))
+    plot_tbl = tbl[tbl["sample"] == "own"]
     for k, c in [(2, "C0"), (3, "C1"), (4, "C2")]:
-        sub = tbl[tbl["order"] == k].sort_values("tau_days")
+        sub = plot_tbl[plot_tbl["order"] == k].sort_values("tau_days")
         ax.errorbar(sub["tau_days"], sub["wedge"], yerr=1.96 * sub["se"],
                     fmt="o-", color=c, capsize=3, label=rf"$\Delta\Pi_{k}$")
     ax.axhline(0, color="black", lw=0.5)

@@ -133,16 +133,15 @@ def run_inverse_contract():
     # Psi overlay figure 
     eps = 1e-12
 
-    # Measured Psi_t = ln(q_CME_t / q_DER_t), averaged over matched days
+    # Measured Psi_t = ln(q_DER_t / q_CME_t), averaged over matched days
     psi_meas_rows = np.array([
-        np.log(np.maximum(Q_CME[i], eps) / np.maximum(Q_DER[i], eps))
+        np.log(np.maximum(Q_DER[i], eps) / np.maximum(Q_CME[i], eps))
         for i in range(n)])
     psi_measured = psi_meas_rows.mean(0)
 
-    # Predicted Psi_t = ln(q_CME_t / q_DER_pred_t), same direction as above
+    # Predicted Psi_t = ln(q_DER_pred_t / q_CME_t), same direction as above
     psi_pred_rows = np.array([
-        np.log(np.maximum(Q_CME[i], eps)
-               / np.maximum(tilt_to_inverse_measure(R_GRID_WIDE, Q_CME[i]), eps))
+        np.log(np.maximum(tilt_to_inverse_measure(R_GRID_WIDE, Q_CME[i]), eps) / np.maximum(Q_CME[i], eps))
         for i in range(n)])
     psi_predicted = psi_pred_rows.mean(0)
     psi_residual = psi_measured - psi_predicted
@@ -151,7 +150,7 @@ def run_inverse_contract():
     fig, ax = plt.subplots(figsize=(8.5, 5))
     ax.axhline(0, color="0.6", lw=0.8, zorder=1)
     ax.plot(R_GRID_WIDE[m], psi_measured[m], color="C0", lw=1.8,
-            label=r"Measured $\Psi=\ln(q^{\mathrm{CME}}/q^{\mathrm{DER}})$", zorder=4)
+            label=r"Measured $\Psi=\ln(q^{\mathrm{DER}}/q^{\mathrm{CME}})$", zorder=4)
     ax.plot(R_GRID_WIDE[m], psi_predicted[m], color="C3", lw=1.6, ls="--",
             label=r"Contract-design prediction (inverse-measure tilt)", zorder=3)
     ax.plot(R_GRID_WIDE[m], psi_residual[m], color="C2", lw=1.4, ls=":",

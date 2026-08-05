@@ -69,7 +69,6 @@ def compute_regional_premia(Q, R_grid, lam):
     return out
 
 def regional_table(per_venue, terc_map, R_grid):
-    """Table 1: venue x regime x region means with shares of the bound."""
     rows = []
     region_names = REGION_NAMES + ["total"]
     for venue, (dates, prem) in per_venue.items():
@@ -90,9 +89,33 @@ def regional_table(per_venue, terc_map, R_grid):
                     "n_days": int(rmask.sum()),
                     "Pi_2": pk[2], "Pi_3": pk[3], "Pi_4": pk[4],
                     "LB_region": lb_a,
-                    "share_of_LB": (lb_a / lb_tot_mean
-                                    if abs(lb_tot_mean) > 1e-12 else np.nan),
+                    "LB_grid_total": lb_tot_mean,
+                    "share_of_grid_total": (lb_a / lb_tot_mean if abs(lb_tot_mean) > 1e-12 else np.nan),
                 })
+
+    return pd.DataFrame(rows)
+
+def route_diagnostic(per_venue, data_p4):
+    spanning = pd.read_parquet(Path(data_p4) / "cumulant_premia.parquet")
+    spanning["date"] = pd.to_datetime(spanning["date"])
+    rows = []
+    for venue, (dates, prem) in per_venue.items():
+        grid_total = sum(prem[("total", k)] for k in (2, 3, 4))
+        grid_df = pd.DataFrame({"date": pd.DatetimeIndex(dates),
+                                "lb_grid_total": grid_total})
+        span_v = spanning.loc[spanning["venue"] == venue, ["date", "lb_total"]].rename(
+            columns={"lb_total": "lb_spanning_total"})
+        merged = grid_df.merge(span_v, on="date", how="inner")
+        gap = merged["lb_spanning_total"] - merged["lb_grid_total"]
+        span_mean = float(merged["lb_spanning_total"].mean())
+        rows.append({
+            "venue": venue, "n_days": int(len(merged)),
+            "mean_lb_grid_total": float(merged["lb_grid_total"].mean()),
+            "mean_lb_spanning_total": span_mean,
+            "mean_truncation_gap": float(gap.mean()),
+            "pct_truncation_gap": (float(gap.mean() / span_mean * 100)
+                                   if abs(span_mean) > 1e-12 else np.nan),
+        })
     return pd.DataFrame(rows)
 
 def wedge_table(per_venue, R_grid, nw_lags=NW_LAGS):
@@ -171,10 +194,18 @@ def run_cl24_regional():
     out1 = TAB_DIR / "cl24_regional.csv"
     table.to_csv(out1, index=False)
     print(f"\n  Saved: {out1}")
-    print("\n  Unconditional regional composition of the bound:")
+    print("\n  Unconditional regional composition of the GRID-TRUNCATED bound "
+          "(R in [0.40, 2.00]; NOT the Phase 4 headline lb_total):")
     print(table[table.regime == "unconditional"]
           [["venue", "region", "Pi_2", "Pi_3", "Pi_4", "LB_region",
-            "share_of_LB"]].round(4).to_string(index=False))
+            "LB_grid_total", "share_of_grid_total"]].round(4).to_string(index=False))
+
+    route = route_diagnostic(per_venue, DATA_P4)
+    out3 = TAB_DIR / "cl24_route_diagnostic.csv"
+    route.to_csv(out3, index=False)
+    print(f"\n  Saved: {out3}")
+    print("\n  Grid-route vs spanning-route truncation loss:")
+    print(route.round(4).to_string(index=False))
 
     wedge, n_common = wedge_table(per_venue, R_grid)
     out2 = TAB_DIR / "cl24_regional_wedge.csv"
@@ -184,7 +215,7 @@ def run_cl24_regional():
     print(wedge[wedge.order == "LB"]
           [["region", "wedge", "t_stat", "stars", "n_days"]]
           .round(5).to_string(index=False))
-    return table, wedge
+    return table, wedge, route
 
 if __name__ == "__main__":
     run_cl24_regional()

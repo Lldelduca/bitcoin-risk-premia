@@ -29,10 +29,7 @@ SPREAD_MULTS = [0.5, 1.0, 2.0]
 KAPPAS = [1.0, 2.0]          
 TAU_TARGET = 27
 
-# ---------------------------------------------------------------------------
 # Pure cores (unit-testable)
-# ---------------------------------------------------------------------------
-
 def v_contract_weights(K, F):
     """|w(K)| * dK of the BKM variance contract, aligned to the INPUT
     order of K. Sorting and spacing are handled internally."""
@@ -42,9 +39,8 @@ def v_contract_weights(K, F):
     w_s = np.abs(2.0 * (1.0 - np.log(K_s / F)) / K_s ** 2)
     dK_s = np.gradient(K_s)
     out = np.empty_like(K_s)
-    out[order] = w_s * dK_s          # map back to input positions
+    out[order] = w_s * dK_s     
     return out
-
 
 def strip_cost(K, F, half_spreads_abs, kappa=1.0):
     """Cost of trading the V-contract strip once (kappa=1) or round trip
@@ -55,7 +51,6 @@ def strip_cost(K, F, half_spreads_abs, kappa=1.0):
     return float(kappa * np.sum(wts * np.asarray(half_spreads_abs,
                                                  dtype=float)))
 
-
 def roll_half_spread(prices):
     """Roll (1984) effective half-spread from a trade-price series."""
     p = np.asarray(prices, dtype=float)
@@ -64,7 +59,6 @@ def roll_half_spread(prices):
     dp = np.diff(p)
     cov = np.cov(dp[1:], dp[:-1])[0, 1]
     return float(np.sqrt(-cov)) if cov < 0 else np.nan
-
 
 def band_table(wedge, band):
     """Summary stats for |wedge| vs band on aligned daily series."""
@@ -81,17 +75,9 @@ def band_table(wedge, band):
         "frac_wedge_exceeds_2x_band": float((w > 2 * b).mean()),
     }
 
-
-# ---------------------------------------------------------------------------
 # Data assembly
-# ---------------------------------------------------------------------------
-
 def _daily_strip_costs(df, venue, kappa, rel_spread=None, quote_mult=1.0):
-    """Series(date -> strip cost). Uses per-row ABSOLUTE half-spreads
-    from quoted bid/offer when available (CME), else rel_spread times the
-    settlement price (Deribit, calibrated). One expiration per day: the
-    one closest to TAU_TARGET, so strike spacing is never mixed across
-    maturities."""
+
     price_col = next((c for c in ["settlementprice", "mid_price",
                                   "price_usd", "mark_price_usd", "price"]
                       if c in df.columns), None)
@@ -124,11 +110,9 @@ def _daily_strip_costs(df, venue, kappa, rel_spread=None, quote_mult=1.0):
         out[date] = strip_cost(g["strike"].values, F, hs, kappa)
     return pd.Series(out).sort_index(), has_quotes
 
-
 def run_notrade_band():
     from src.config import get_path
 
-    # Corrected: Replaced hardcoded results folders with centralized config getters
     TAB = get_path("results_phase5") / "tables"
     TAB.mkdir(parents=True, exist_ok=True)
 
@@ -151,7 +135,8 @@ def run_notrade_band():
                        if c in df.columns)
         df = df[(df[tau_col] >= TAU_TARGET - 7)
                 & (df[tau_col] <= TAU_TARGET + 7)]
-        has_quotes = ("bid" in df.columns) and ("ask" in df.columns)
+        has_quotes = ("bid" in df.columns) and (
+            next((c for c in ["ask", "offer"] if c in df.columns), None) is not None)
         opts[venue] = (df, has_quotes)
         print(f"  [{venue}] {len(df):,} options near tau=27; "
               f"quoted spreads available: {has_quotes}")
