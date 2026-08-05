@@ -27,7 +27,7 @@ from src.phase3.run_phase3 import (load_daily_rnds_from_parquet, load_conditioni
 
 R_GRID = get_return_grid()
 BLOCK_LENGTH = 27
-DEFAULT_B = 10000
+DEFAULT_B = 1000
 MAX_ITER_REPLICATE = 3000
 
 def _tercile_mean_states(Z_matrix, tercile_labels):

@@ -285,7 +285,7 @@ def phase_3_kernel():
             print(f"  [WARN] {venue} npz lacks tercile_labels — pre-fix run?")
     _check_file(phase3_dir / "mfk_unconditional.npz", "MFK (bootstrap bands)")
 
-def phase_3b_kernel_bootstrap(B=200, workers=6):
+def phase_3b_kernel_bootstrap(B=1000, workers=6):
     from src.phase3.run_phase3_bootstrap import run_bootstrap
     run_bootstrap(venues=["CME", "DER"], spec_name="crypto", B=B, workers=workers)
     tab = Path("results") / "phase3" / "tables"
