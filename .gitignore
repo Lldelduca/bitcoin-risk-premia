@@ -5,7 +5,7 @@ __pycache__/
 .pytest_cache/
 
 # Data and Models (CRITICAL)
-data/
+/data/
 *.parquet
 
 # LaTeX Build Files
