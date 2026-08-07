@@ -38,9 +38,21 @@ def run_kde_tilt_robustness():
     z_dates, Z_matrix, z_cols = load_conditioning_spec("crypto")
     tercile_df = load_volatility_tercile_labels()
 
+    # Cross-venue date intersection (must match run_phase3.py)
+    from src.phase2.run_phase2 import intersect_venue_dates
+    _raw = {}
+    for v in ["CME", "DER"]:
+        _raw[v] = load_daily_rnds_from_parquet(v, tau_days=27)
+    cme_d, cme_r, der_d, der_r = intersect_venue_dates(
+        *_raw["CME"], *_raw["DER"])
+    _intersected = {"CME": (cme_d, cme_r), "DER": (der_d, der_r)}
+    print(f"\n  Intersected to {len(cme_d)} common matched days "
+          f"(CME {len(_raw['CME'][0])} -> {len(cme_d)}, "
+          f"DER {len(_raw['DER'][0])} -> {len(der_d)})")
+
     cells = {}
     for venue in ["CME", "DER"]:
-        rnd_dates, rnds = load_daily_rnds_from_parquet(venue, tau_days=27)
+        rnd_dates, rnds = _intersected[venue]
         dates, arnds, aZ, labels = align_rnds_and_Z(
             rnd_dates, rnds, z_dates, Z_matrix, tercile_df=tercile_df)
 

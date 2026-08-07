@@ -90,10 +90,22 @@ def run_bootstrap(venues, spec_name, B, workers, ci=0.95):
     z_dates, Z_matrix_full, z_cols = load_conditioning_spec(spec_name)
     tercile_df = load_volatility_tercile_labels()
 
+    # Cross-venue date intersection
+    from src.phase2.run_phase2 import intersect_venue_dates
+    _raw = {}
+    for v in venues:
+        _raw[v] = load_daily_rnds_from_parquet(v, tau_days=27)
+    cme_d, cme_r, der_d, der_r = intersect_venue_dates(
+        *_raw["CME"], *_raw["DER"])
+    _intersected = {"CME": (cme_d, cme_r), "DER": (der_d, der_r)}
+    print(f"\n  Intersected to {len(cme_d)} common matched days "
+          f"(CME {len(_raw['CME'][0])} -> {len(cme_d)}, "
+          f"DER {len(_raw['DER'][0])} -> {len(der_d)})")
+
     summary_rows = []
     for venue in venues:
         print(f"\n  [{venue}] Preparing data...")
-        rnd_dates, rnds = load_daily_rnds_from_parquet(venue, tau_days=27)
+        rnd_dates, rnds = _intersected[venue]
         dates, aligned_rnds, Z, labels = align_rnds_and_Z(
             rnd_dates, rnds, z_dates, Z_matrix_full, tercile_df=tercile_df
         )
@@ -190,4 +202,3 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     run_bootstrap(args.venues, args.spec, args.B, args.workers)
-    

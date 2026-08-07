@@ -26,6 +26,8 @@ import numpy as np
 from scipy.integrate import cumulative_trapezoid
 from typing import NamedTuple
 
+REGION_EDGES = (0.90, 1.10)
+
 class EPDecomposition(NamedTuple):
     R_grid: np.ndarray       # gross return grid
     ep: np.ndarray           # EP curve ep^j(R)
@@ -54,27 +56,46 @@ def compute_ep_decomposition(R_grid: np.ndarray, q_R: np.ndarray, p_R: np.ndarra
 
     return EPDecomposition(R_grid=R_grid, ep=ep, cep=cep, kernel=kernel, total_ep=total_ep, p_R=p_R, q_R=q_R, venue=venue)
 
-def compute_ep_contributions(decomp: EPDecomposition, boundaries: tuple = (0.90, 1.10)):
+def _edge_interp_weights(R_grid: np.ndarray, edge: float):
+    j = int(np.searchsorted(R_grid, edge) - 1)
+    j = int(np.clip(j, 0, len(R_grid) - 2))
+    w = (edge - R_grid[j]) / (R_grid[j + 1] - R_grid[j])
+    return j, float(np.clip(w, 0.0, 1.0))
+
+def _cum_at(ct: np.ndarray, R_grid: np.ndarray, edge: float) -> float:
+    j, w = _edge_interp_weights(R_grid, edge)
+    return float((1.0 - w) * ct[j] + w * ct[j + 1])
+
+def compute_ep_contributions(decomp: EPDecomposition, boundaries: tuple = REGION_EDGES, return_residual: bool = False):
     R = decomp.R_grid
     ep = decomp.ep
     total = decomp.total_ep
 
     lower, upper = boundaries
-    down_mask = R < lower
-    mid_mask = (R >= lower) & (R <= upper)
-    up_mask = R > upper
+
+    ct = cumulative_trapezoid(ep, R, initial=0.0)
+    c_lo = _cum_at(ct, R, lower)
+    c_hi = _cum_at(ct, R, upper)
+
+    values = {
+        "downside": c_lo - float(ct[0]),
+        "mid": c_hi - c_lo,
+        "upside": float(ct[-1]) - c_hi,
+    }
+    regions = {
+        "downside": (float(R[0]), float(lower)),
+        "mid": (float(lower), float(upper)),
+        "upside": (float(upper), float(R[-1])),
+    }
 
     contributions = {}
-    for name, mask in [("downside", down_mask), ("mid", mid_mask), ("upside", up_mask)]:
-        if mask.sum() > 1:
-            contrib = np.trapezoid(ep[mask], R[mask])
-        else:
-            contrib = 0.0
+    for name, contrib in values.items():
         contributions[name] = {
-            "contribution": contrib,
-            "share": contrib / total if abs(total) > 1e-10 else np.nan,
-            "region": (R[mask].min() if mask.any() else np.nan,
-                       R[mask].max() if mask.any() else np.nan),
+            "contribution": float(contrib),
+            "share": float(contrib / total) if abs(total) > 1e-10 else np.nan,
+            "region": regions[name],
         }
 
+    if return_residual:
+        return contributions, float(total - sum(values.values()))
     return contributions
