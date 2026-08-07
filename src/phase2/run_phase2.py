@@ -35,7 +35,7 @@ for d in [FIG_DIR, TAB_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 R_GRID = get_return_grid()
-R_PLOT = np.arange(R_GRID[0], R_GRID[-1] + 0.001, 0.01)
+R_PLOT = np.arange(R_GRID[0], R_GRID[-1] + 0.001, 0.002)
 EP_BOOT_B = 500
 EP_BOOT_BLOCK = 54
 EP_BOOT_SEED = get_seed("default")

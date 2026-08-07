@@ -271,6 +271,208 @@ fng        -0.396      -0.154 -0.235 -0.454    0.108 -0.187  1.000
   Phase 2: Beason-Schreindorfer EP Decomposition
 ============================================================
 
+  Loading BTC spot prices...
+  Spot series: 1327 days
+
+  Loading daily RNDs from parquet...
+  [CME] Loaded 624 daily RNDs from rnd_CME_densities.parquet
+  [DER] Loaded 1317 daily RNDs from rnd_DER_densities.parquet
+  Intersected to 619 common matched days (CME 624 -> 619, DER 1317 -> 619)
+
+  Estimating physical density (enhanced, headline)...
+    n_returns = 1300, integral = 1.0000
+  Estimating physical density (AGMW vanilla, benchmark)...
+    integral = 1.0000, opt_success = True, rank_deficient_polyfit = True
+    published-bound binding: ['k_L_upper', 'k_R_upper']
+  Estimating physical density (KDE, appendix robustness)...
+    n_returns = 1300, bandwidth = 0.0506, integral = 1.0000
+
+  Computing EP decomposition: CME_almeida
+    Total EP = 0.0363
+      downside: +0.0042 (+11.6%)
+           mid: -0.0027 (-7.3%)
+        upside: +0.0347 (+95.7%)
+
+  Computing EP decomposition: DER_almeida
+    Total EP = 0.0362
+      downside: +0.0070 (+19.2%)
+           mid: -0.0025 (-6.9%)
+        upside: +0.0317 (+87.7%)
+
+  Computing EP decomposition: CME_vanilla
+    Total EP = 0.0367
+      downside: +0.0053 (+14.5%)
+           mid: -0.0031 (-8.3%)
+        upside: +0.0344 (+93.8%)
+
+  Computing EP decomposition: DER_vanilla
+    Total EP = 0.0366
+      downside: +0.0081 (+22.1%)
+           mid: -0.0029 (-7.9%)
+        upside: +0.0314 (+85.8%)
+
+  Computing EP decomposition: CME_kde
+    Total EP = 0.0416
+      downside: +0.0066 (+15.9%)
+           mid: -0.0022 (-5.3%)
+        upside: +0.0372 (+89.4%)
+
+  Computing EP decomposition: DER_kde
+    Total EP = 0.0415
+      downside: +0.0094 (+22.5%)
+           mid: -0.0020 (-4.9%)
+        upside: +0.0342 (+82.4%)
+
+  Block-bootstrap EP inference (B=500, block=54 days, ~48 effectively independent return obs)...
+    [almeida] CME: total EP = +0.0363 [-0.0124, +0.1042] (se = 0.0297, B_eff = 500)
+    [almeida] DER: total EP = +0.0362 [-0.0125, +0.1040] (se = 0.0297, B_eff = 500)
+    [vanilla] CME: total EP = +0.0367 [-0.0185, +0.1036] (se = 0.0316, B_eff = 500)
+    [vanilla] DER: total EP = +0.0366 [-0.0186, +0.1035] (se = 0.0316, B_eff = 500)
+    [    kde] CME: total EP = +0.0416 [-0.0103, +0.1019] (se = 0.0291, B_eff = 500)
+    [    kde] DER: total EP = +0.0415 [-0.0104, +0.1017] (se = 0.0291, B_eff = 500)
+    [raw moment] ALL: total EP = +0.0442 [-0.0102, +0.1047] (no density estimation; estimator-free anchor)
+
+  Phase 2 complete. Figures in /home/lukasz_lostsim/bitcoin-risk-premia/results/phase2/figures/
+  [checkpoint] EP summary: ep_decomposition_summary.csv (1.0 KB)
+  [checkpoint] EP bootstrap CIs: ep_bootstrap_ci.csv (5.1 KB)
+  [checkpoint] raw-moment EP: +0.0442 [-0.0102, +0.1047]
+  [checkpoint] three-estimator lineup present (enhanced / AGMW vanilla / KDE)
+
+  [Phase 2: Physical Density & EP Decomp] completed in 34m 9s
+
+============================================================
+  NB Sweep: bin-count stability (enhanced vs AGMW vanilla)
+============================================================
+  1300 overlapping 27d returns; NB grid = [8, 9, 10, 11, 12, 13]
+  [CME] Loaded 624 daily RNDs from rnd_CME_densities.parquet
+  [DER] Loaded 1317 daily RNDs from rnd_DER_densities.parquet
+    [almeida] NB=8 done
+    [almeida] NB=9 done
+    [almeida] NB=10 done
+    [almeida] NB=11 done
+    [almeida] NB=12 done
+    [almeida] NB=13 done
+    [vanilla] NB=8 done
+    [vanilla] NB=9 done
+    [vanilla] NB=10 done
+    [vanilla] NB=11 done
+    [vanilla] NB=12 done
+    [vanilla] NB=13 done
+
+  Stability (range as fraction of NB=12 peak; lower = stabler):
+estimator venue  density_range_pct  ep_range_pct  total_ep_spread
+  almeida   CME             0.3948        0.9551           0.0067
+  almeida   DER             0.3948        0.9899           0.0067
+  vanilla   CME             0.4635        1.6523           0.0252
+  vanilla   DER             0.4635        1.7195           0.0252
+
+  Published-bound binding check (vanilla) across NB...
+    published bounds bind in 6/6 NB settings; detail column saved to sigma_binding_check.csv
+
+  [checkpoint] NB-sweep summary: nb_sweep_summary.csv (662 B)
+  [checkpoint] Published-bound binding check: sigma_binding_check.csv (1.2 KB)
+    almeida CME: density=0.395, ep=0.955
+    almeida DER: density=0.395, ep=0.990
+    vanilla CME: density=0.463, ep=1.652
+    vanilla DER: density=0.463, ep=1.720
+  [checkpoint] published bounds bind in 6/6 NB settings
+
+============================================================
+  Paired bootstrap: enhanced - vanilla total EP (B=500)
+============================================================
+  [CME] Loaded 624 daily RNDs from rnd_CME_densities.parquet
+  [DER] Loaded 1317 daily RNDs from rnd_DER_densities.parquet
+    100/500 replicates
+    200/500 replicates
+    300/500 replicates
+    400/500 replicates
+    500/500 replicates
+
+venue  mean_diff    ci_lo   ci_hi  se_boot  p_two_sided  B_effective  n_fail  block_length
+  CME    0.00008 -0.01678 0.01471  0.00803        0.976          500       0            54
+  DER    0.00008 -0.01678 0.01471  0.00803        0.976          500       0            54
+
+  [checkpoint] EP diff CI (paired bootstrap): ep_diff_ci.csv (288 B)
+  [checkpoint] CME enhanced-vanilla EP diff: +0.00008 [-0.01678, +0.01471] (p = 0.976)
+  [checkpoint] DER enhanced-vanilla EP diff: +0.00008 [-0.01678, +0.01471] (p = 0.976)
+
+  [Phase 2b: NB-Sweep Diagnostic (appendix)] completed in 34m 51s
+
+============================================================
+  Grid Sensitivity: integration-window dependence of total EP
+============================================================
+  1300 overlapping returns; support [0.482, 2.180]
+  [CME] average RND rebuilt on master grid [0.25, 4.50] from 624 days
+  [DER] average RND rebuilt on master grid [0.25, 4.50] from 1317 days
+
+
+  Total EP by integration window:
+grid             headline  wide_1  wide_2
+estimator venue                          
+almeida   CME      0.0363  0.0353  0.0340
+          DER      0.0363  0.0352  0.0339
+kde       CME      0.0416  0.0426  0.0428
+          DER      0.0416  0.0426  0.0427
+vanilla   CME      0.0367  0.0382  0.0401
+          DER      0.0367  0.0382  0.0399
+
+  Raw-moment anchor (full support): +0.0442
+  [CME] enhanced: +0.0363 -> +0.0340 on [0.30, 2.60]; gap to anchor closed: -28.3%; q mass clipped on headline grid: 0.0078
+  [DER] enhanced: +0.0363 -> +0.0339 on [0.30, 2.60]; gap to anchor closed: -30.2%; q mass clipped on headline grid: 0.0089
+  Returns above R = 2.00 (headline window): 4
+
+  [checkpoint] Grid sensitivity table: grid_sensitivity.csv (2.4 KB)
+  [checkpoint] CME enhanced on [0.30, 2.60]: +0.0340, gap closed -28.3%
+  [checkpoint] DER enhanced on [0.30, 2.60]: +0.0339, gap closed -30.2%
+
+
+============================================================
+  Kernel Hump Significance Test (joint block bootstrap, B=500)
+============================================================
+  [CME] Loaded 624 daily RNDs from rnd_CME_densities.parquet
+  [DER] Loaded 1317 daily RNDs from rnd_DER_densities.parquet
+  Intersected to 619 common matched days (CME 624 -> 619, DER 1317 -> 619)
+    100/500 replicates
+    200/500 replicates
+    300/500 replicates
+    400/500 replicates
+    500/500 replicates
+
+venue  H_point  peak_R  trough_R  H_boot_mean   ci_lo  ci_hi  p_monotone  B_effective  n_fail  block_days  block_returns
+  CME   0.9374   1.015    0.8404       0.7859  0.1467 1.4208       0.014          500       0          27             54
+  DER   0.8140   1.015    0.8436       0.6652 -0.0096 1.3224       0.034          500       0          27             54
+
+  [checkpoint] Hump significance test: hump_test.csv (380 B)
+  [checkpoint] CME: H = 0.937 [0.147, 1.421], P(monotone) = 0.0140
+  [checkpoint] DER: H = 0.814 [-0.010, 1.322], P(monotone) = 0.0340
+
+
+============================================================
+  BVRP State-Space Decomposition (Grith slide extension)
+============================================================
+  [CME] Loaded 624 daily RNDs from rnd_CME_densities.parquet
+  [DER] Loaded 1317 daily RNDs from rnd_DER_densities.parquet
+  Intersected to 619 common matched days (CME 624 -> 619, DER 1317 -> 619)
+
+  Joint block bootstrap for the BVRP total (B=500)...
+    100/500 replicates
+    200/500 replicates
+    300/500 replicates
+    400/500 replicates
+    500/500 replicates
+
+  BVRP totals (sigma2_Q - sigma2_P):
+    CME: -0.00483 [-0.02213, +0.00872]  (s2_Q=0.03552, s2_P=0.04036)
+    DER: -0.00261 [-0.02067, +0.01080]  (s2_Q=0.03774, s2_P=0.04036)
+
+  Regional contributions (enhanced, x100 pp):
+    CME: down -0.076, mid -0.050, up -0.357
+    DER: down +0.017, mid -0.052, up -0.227
+
+  [checkpoint] BVRP decomposition: bvrp_decomposition_summary.csv (1.5 KB)
+  [checkpoint] CME BVRP (enhanced): -0.00483 [-0.02213, +0.00872]  down/mid/up = -0.00076/-0.00050/-0.00357
+  [checkpoint] DER BVRP (enhanced): -0.00261 [-0.02067, +0.01080]  down/mid/up = +0.00017/-0.00052/-0.00227
+
 
 ======================================================================
   PIPELINE SUMMARY

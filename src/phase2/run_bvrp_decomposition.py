@@ -25,7 +25,7 @@ from src.phase2.run_phase2 import (load_spot_prices, load_daily_rnds_from_parque
                                    compute_average_rnd, intersect_venue_dates)
 
 R_GRID = get_return_grid()
-R_PLOT = np.arange(R_GRID[0], R_GRID[-1] + 0.001, 0.01)
+R_PLOT = np.arange(R_GRID[0], R_GRID[-1] + 0.001, 0.002)
 B = 500
 BLOCK_DAYS = 27
 BLOCK_RET = 54

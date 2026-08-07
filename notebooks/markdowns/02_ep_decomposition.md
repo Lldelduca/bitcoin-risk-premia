@@ -27,7 +27,7 @@ TAB_DIR.mkdir(parents=True, exist_ok=True)
 
 d = np.load(DATA_P2 / 'phase2_densities.npz')
 R = d['R_grid']
-R_PLOT = np.arange(R[0], R[-1] + 0.001, 0.01)
+R_PLOT = np.arange(R[0], R[-1] + 0.001, 0.002)
 p_enh = d['p_almeida']
 p_van = d['p_vanilla']
 p_kde = d['p_kde']
@@ -75,8 +75,8 @@ def show_table(path, cols=None, title=None, rounding=4, sort=None, produced_by=N
 
     --- EP Decomposition Summary ---
     venue estimator  total_ep  downside_contrib  downside_share  mid_contrib  mid_share  upside_contrib  upside_share
-      CME   almeida  0.036274          0.004230        0.116611    -0.002666  -0.073501        0.034710      0.956890
-      DER   almeida  0.036142          0.006968        0.192791    -0.002509  -0.069426        0.031683      0.876635
+      CME   almeida  0.036286          0.004218        0.116233    -0.002665  -0.073456        0.034734      0.957223
+      DER   almeida  0.036154          0.006956        0.192386    -0.002508  -0.069383        0.031707      0.876997
       CME   vanilla  0.036717          0.005334        0.145274    -0.003051  -0.083104        0.034434      0.937829
       DER   vanilla  0.036585          0.008072        0.220636    -0.002894  -0.079113        0.031407      0.858477
       CME       kde  0.041627          0.006614        0.158877    -0.002207  -0.053014        0.037220      0.894137
@@ -100,6 +100,7 @@ for ax, (venue, q, color) in zip(axes, [('CME', q_cme, 'C0'), ('Deribit', q_der,
 axes[0].set_ylabel('Density')
 fig.suptitle('Physical vs Risk-Neutral Densities (27-day)', fontsize=13)
 plt.tight_layout()
+plt.savefig(FIG_DIR / 'fig_densities_overlay.png', dpi=300, bbox_inches='tight')
 plt.show()
 ```
 
@@ -126,6 +127,7 @@ for ax, (venue, q, color) in zip(axes, [('CME', q_cme, 'C0'), ('Deribit', q_der,
 axes[0].set_ylabel('Density')
 fig.suptitle('Physical Density: Cross-Family Robustness (KDE + GPD)', fontsize=13)
 plt.tight_layout()
+plt.savefig(FIG_DIR / 'fig_densities_kde_appendix.png', dpi=300, bbox_inches='tight')
 plt.show()
 
 ```
@@ -156,6 +158,7 @@ ax.set_xlim(0.5, 1.6)
 ax.set_title('Equity Premium Curve: CME vs Deribit (enhanced estimator)')
 ax.legend()
 plt.tight_layout()
+plt.savefig(FIG_DIR / 'fig_ep_curve.png', dpi=300, bbox_inches='tight')
 plt.show()
 ```
 
@@ -220,6 +223,7 @@ ax.set_ylim(0, 5)
 ax.set_title('Unconditional Pricing Kernel: CME vs Deribit (enhanced estimator)')
 ax.legend()
 plt.tight_layout()
+plt.savefig(FIG_DIR / 'fig_kernel_unconditional.png', dpi=300, bbox_inches='tight')
 plt.show()
 ```
 
@@ -257,8 +261,8 @@ print(pivot_share.round(2).to_string())
               total_ep                downside_contrib_pp                mid_contrib_pp                upside_contrib_pp               
     estimator  almeida    kde vanilla             almeida    kde vanilla        almeida    kde vanilla           almeida    kde vanilla
     venue                                                                                                                              
-    CME          0.036  0.042   0.037               0.423  0.661   0.533         -0.267 -0.221  -0.305             3.471  3.722   3.443
-    DER          0.036  0.041   0.037               0.697  0.935   0.807         -0.251 -0.205  -0.289             3.168  3.419   3.141
+    CME          0.036  0.042   0.037               0.422  0.661   0.533         -0.267 -0.221  -0.305             3.473  3.722   3.443
+    DER          0.036  0.041   0.037               0.696  0.935   0.807         -0.251 -0.205  -0.289             3.171  3.419   3.141
     
     --- Regional shares (unstable near-zero denominator; context only) ---
               downside_share               mid_share               upside_share              
@@ -289,6 +293,7 @@ for ax, (venue, ep_e, ep_v) in zip(axes,
 axes[0].set_ylabel(r'$\mathrm{ep}^j(R)$')
 fig.suptitle('EP Curve: Enhanced vs AGMW Published', fontsize=13)
 plt.tight_layout()
+plt.savefig(FIG_DIR / 'fig_ep_enhanced_vs_vanilla.png', dpi=300, bbox_inches='tight')
 plt.show()
 ```
 
@@ -320,6 +325,7 @@ for ax, (venue, ep_e, ep_k) in zip(axes,
 axes[0].set_ylabel(r'$\mathrm{ep}^j(R)$')
 fig.suptitle('EP Curve Robustness: Enhanced vs KDE (cross-family)', fontsize=13)
 plt.tight_layout()
+plt.savefig(FIG_DIR / 'fig_ep_robustness_kde_appendix.png', dpi=300, bbox_inches='tight')
 plt.show()
 ```
 
@@ -358,8 +364,8 @@ else:
 
     --- NB-sweep stability (range as fraction of NB=12 peak) ---
     estimator venue  density_range_pct  ep_range_pct  total_ep_spread
-      almeida   CME             0.3976        0.9730           0.0066
-      almeida   DER             0.3976        1.0084           0.0066
+      almeida   CME             0.3948        0.9551           0.0067
+      almeida   DER             0.3948        0.9899           0.0067
       vanilla   CME             0.4635        1.6523           0.0252
       vanilla   DER             0.4635        1.7195           0.0252
     
@@ -419,7 +425,7 @@ else:
     --- Total EP by integration window ---
     grid             headline  wide_1  wide_2
     estimator venue                          
-    almeida   CME      0.0362  0.0353  0.0340
+    almeida   CME      0.0363  0.0353  0.0340
               DER      0.0363  0.0352  0.0339
     kde       CME      0.0416  0.0426  0.0428
               DER      0.0416  0.0426  0.0427
@@ -436,8 +442,8 @@ else:
       almeida   DER         0.00892                4                0
       vanilla   DER         0.00892                4                0
           kde   DER         0.00892                4                0
-    [CME] enhanced on [0.30, 2.60]: +0.0340; gap to anchor closed vs headline: -28.2%
-    [DER] enhanced on [0.30, 2.60]: +0.0339; gap to anchor closed vs headline: -30.1%
+    [CME] enhanced on [0.30, 2.60]: +0.0340; gap to anchor closed vs headline: -28.3%
+    [DER] enhanced on [0.30, 2.60]: +0.0339; gap to anchor closed vs headline: -30.2%
     
 
 #### 9. BVRP State Decomposition (Grith slides extension)
@@ -465,10 +471,10 @@ else:
 
     --- BVRP decomposition (per venue x estimator) ---
     venue estimator  sigma2_Q  sigma2_P    total  downside_contrib  mid_contrib  upside_contrib    ci_lo   ci_hi
-      CME   almeida   0.03552   0.04035 -0.00482          -0.00076     -0.00050        -0.00357 -0.02212 0.00872
+      CME   almeida   0.03552   0.04036 -0.00483          -0.00076     -0.00050        -0.00357 -0.02213 0.00872
       CME   vanilla   0.03552   0.04390 -0.00837          -0.00026     -0.00063        -0.00748      NaN     NaN
       CME       kde   0.03552   0.04345 -0.00792          -0.00058     -0.00071        -0.00663      NaN     NaN
-      DER   almeida   0.03774   0.04035 -0.00261           0.00018     -0.00052        -0.00226 -0.02067 0.01079
+      DER   almeida   0.03774   0.04036 -0.00261           0.00017     -0.00052        -0.00227 -0.02067 0.01080
       DER   vanilla   0.03774   0.04390 -0.00615           0.00067     -0.00065        -0.00618      NaN     NaN
       DER       kde   0.03774   0.04345 -0.00571           0.00035     -0.00073        -0.00533      NaN     NaN
     

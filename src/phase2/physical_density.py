@@ -61,6 +61,17 @@ def _fit_gpd_tail(excesses: np.ndarray):
     return shape, scale
 
 
+def _blend_composite(R_grid: np.ndarray, p_body: np.ndarray,p_tail_L: np.ndarray, p_tail_R: np.ndarray,
+                     u_L: float, u_R: float, half_width: float = 0.02) -> np.ndarray:
+
+    from scipy.special import expit
+    d = half_width
+    w_L = expit(-4.0 * (R_grid - u_L) / d)
+    w_R = expit(4.0 * (R_grid - u_R) / d)
+    w_B = np.clip(1.0 - w_L - w_R, 0.0, 1.0)
+    return w_L * p_tail_L + w_B * p_body + w_R * p_tail_R
+
+
 # ---------------------------------------------------------------------------
 # GEV point-matching fit (Figlewski 2008)
 # ---------------------------------------------------------------------------
@@ -270,13 +281,37 @@ def estimate_physical_density_almeida_from_returns(
                           f"persists after escalation; inspect diagnostics.")
     diagnostics["interior_rise_left"] = rise_L
 
-    # Continuity gaps at the splices (v3: should be ~ LSQ residual only)
+    # Step 4: logistic blending at the splices (C^1 continuity)
+    BLEND_HW = 0.02
+    EXT = 5.0 * BLEND_HW
+
+    p_body = np.zeros_like(R_grid)
+    ext_body = (R_grid >= u_L - EXT) & (R_grid <= u_R + EXT)
+    p_body[ext_body] = np.maximum(
+        body_scale * poly_fn(R_grid[ext_body]), 0.0)
+
+    p_tail_L = np.zeros_like(R_grid)
+    ext_left = R_grid <= u_L + EXT
+    p_tail_L[ext_left] = stats.genextreme.pdf(
+        -R_grid[ext_left], c_L, loc=loc_L, scale=scale_L)
+
+    p_tail_R = np.zeros_like(R_grid)
+    ext_right = R_grid >= u_R - EXT
+    p_tail_R[ext_right] = stats.genextreme.pdf(
+        R_grid[ext_right], c_R, loc=loc_R, scale=scale_R)
+
+    p_R = _blend_composite(R_grid, p_body, p_tail_L, p_tail_R,
+                           u_L, u_R, half_width=BLEND_HW)
+    p_R = np.maximum(p_R, 0.0)
+
+    # Continuity-gap diagnostic (post-blend; should be negligible)
     for name, u in (("left", u_L), ("right", u_R)):
         i = int(np.searchsorted(R_grid, u))
         if 1 <= i < len(R_grid) - 1:
             diagnostics[f"continuity_gap_{name}"] = float(abs(p_R[i] - p_R[i - 1]))
+    diagnostics["blend_half_width"] = BLEND_HW
 
-    # Step 4: single global renormalization (mass ~ 1 by construction)
+    # Step 5: single global renormalization (mass ~ 1 by construction)
     mass = float(np.trapezoid(p_R, R_grid))
     diagnostics["mass_pre_norm"] = mass
     if mass <= 0:
