@@ -281,11 +281,11 @@ fng        -0.396      -0.154 -0.235 -0.454    0.108 -0.187  1.000
   Phase 1b: RND Extraction (Figlewski tails)          OK 1h 33m 12s
   Phase 1c: CP Tensor Decomposition                   OK    18m 14s
   Phase 1d: Conditioning Vectors                      OK       0.1s
-  Phase 2: Physical Density & EP Decomp               OK    50m 26s
-  Phase 2b: NB-Sweep Diagnostic (appendix)            OK    51m 30s
-  Phase 2c: Grid-Sensitivity Diagnostic (appx)        OK       8.1s
-  Phase 2d: Kernel Hump Significance Test             OK     9m 56s
-  Phase 2e: BVRP State Decomposition                  OK     9m 55s
+  Phase 2: Physical Density & EP Decomp               OK     34m 4s
+  Phase 2b: NB-Sweep Diagnostic (appendix)            OK    34m 31s
+  Phase 2c: Grid-Sensitivity Diagnostic (appx)        OK       5.5s
+  Phase 2d: Kernel Hump Significance Test             OK     6m 35s
+  Phase 2e: BVRP State Decomposition                  OK     6m 30s
   Phase 3: Conditional Pricing Kernel                 OK     8m 17s
   Phase 3b: Kernel Bootstrap (heavy)                  OK 16h 21m 24s
   Phase 3c: Joint Regime Test                         OK       0.0s
