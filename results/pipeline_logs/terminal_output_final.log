@@ -702,6 +702,125 @@ venue tercile  curv_enh  curv_kde  curv_delta  curv_sign_agrees
   [checkpoint] KDE-tilt robustness: kde_tilt_robustness.csv (1.6 KB)
   [checkpoint] curvature-at-money sign agreement: 6/6 venue-tercile cells; max |delta| = 1.983
 
+============================================================
+  Phase 4: BKM Extraction & CL20 Decomposition
+  Window: 2020-01-13 -> 2023-08-31
+  theta baseline = 2.0; weights = (1.0, -1.0, 1.0)
+============================================================
+
+  Loading fitted SSVI parameters...
+  Loaded 8,913 parameter rows
+
+  Loading CME options...
+  CME: 65,598 options, 802 days
+  [CME] BKM extraction complete: 629/772 days
+
+  Loading DER options...
+  DER: 135,081 options, 1327 days
+  [DER] BKM extraction complete: 1317/1327 days
+
+  Saved BKM moments: 1946 day-venue pairs
+
+  Computing rolling physical variance (252-day window)...
+  Physical variance available: 2131 days
+
+  Computing CL20 contributions at theta=2.0...
+  Saved cumulant premia: 1946 rows
+
+  Matched CME-Deribit days: 624 (1248 venue-day rows)
+
+  Regime-conditional decomposition — MATCHED DAYS (headline)...
+venue        regime  n_days   Pi_2   Pi_3   Pi_4  lb_total  share_var  share_skew  share_kurt  mean_vrp
+  CME unconditional     624 0.0504 0.0174 0.0291    0.0969     0.5200      0.1798      0.3002    0.0119
+  DER unconditional     624 0.0540 0.0194 0.0324    0.1057     0.5106      0.1834      0.3060    0.0153
+  CME           low     224 0.0257 0.0053 0.0074    0.0384     0.6689      0.1388      0.1923   -0.0033
+  CME           mid     193 0.0456 0.0144 0.0210    0.0810     0.5635      0.1776      0.2589    0.0073
+  CME          high     207 0.0818 0.0335 0.0604    0.1757     0.4656      0.1906      0.3438    0.0319
+  DER           low     224 0.0275 0.0062 0.0087    0.0424     0.6476      0.1468      0.2056   -0.0017
+  DER           mid     193 0.0486 0.0156 0.0229    0.0871     0.5579      0.1787      0.2633    0.0102
+  DER          high     207 0.0877 0.0372 0.0667    0.1916     0.4577      0.1941      0.3482    0.0375
+
+  Regime-conditional decomposition — ALL DAYS (supplementary)...
+venue        regime  n_days   Pi_2   Pi_3   Pi_4  lb_total  share_var  share_skew  share_kurt  mean_vrp
+  CME unconditional     629 0.0506 0.0176 0.0295    0.0977     0.5178      0.1805      0.3017    0.0119
+  DER unconditional    1317 0.0558 0.0205 0.0348    0.1111     0.5018      0.1847      0.3135    0.0151
+  CME           low     225 0.0257 0.0053 0.0074    0.0384     0.6694      0.1384      0.1921   -0.0033
+  CME           mid     195 0.0455 0.0144 0.0210    0.0809     0.5628      0.1778      0.2594    0.0069
+  CME          high     209 0.0824 0.0341 0.0615    0.1779     0.4630      0.1915      0.3455    0.0321
+  DER           low     257 0.0272 0.0061 0.0085    0.0419     0.6502      0.1458      0.2039   -0.0015
+  DER           mid     254 0.0482 0.0155 0.0229    0.0866     0.5566      0.1791      0.2643    0.0096
+  DER          high     254 0.0861 0.0359 0.0639    0.1859     0.4632      0.1930      0.3439    0.0363
+
+  Theta robustness sweep (matched days)...
+venue  theta  lambda_1  lambda_2  lambda_3  mean_Pi_2  mean_Pi_3  mean_Pi_4  mean_lb_total  lb_annualized_pct
+  CME    1.0       1.0   -0.6667    0.5000     0.0504     0.0116     0.0145         0.0765           103.4653
+  DER    1.0       1.0   -0.6667    0.5000     0.0540     0.0129     0.0162         0.0831           112.3251
+  CME    2.0       1.0   -1.0000    1.0000     0.0504     0.0174     0.0291         0.0969           130.9770
+  DER    2.0       1.0   -1.0000    1.0000     0.0540     0.0194     0.0324         0.1057           142.9301
+  CME    3.0       1.0   -1.3333    1.6667     0.0504     0.0232     0.0485         0.1221           165.0423
+  DER    3.0       1.0   -1.3333    1.6667     0.0540     0.0258     0.0539         0.1338           180.8249
+
+  Kappa-bound sensitivity (matched days)...
+venue  kappa_bound  n_days   Pi_2   Pi_3   Pi_4  lb_total  share_var  share_skew  share_kurt  lb_annualized_pct
+  CME         1.00     624 0.0491 0.0141 0.0213    0.0844     0.5810      0.1665      0.2526           114.1592
+  CME         1.25     624 0.0499 0.0161 0.0257    0.0917     0.5442      0.1753      0.2805           123.9851
+  CME         1.50     624 0.0504 0.0174 0.0291    0.0969     0.5200      0.1798      0.3002           130.9770
+  DER         1.00     624 0.0525 0.0154 0.0233    0.0912     0.5749      0.1693      0.2558           123.3341
+  DER         1.25     624 0.0534 0.0178 0.0284    0.0996     0.5366      0.1786      0.2849           134.6288
+  DER         1.50     624 0.0540 0.0194 0.0324    0.1057     0.5106      0.1834      0.3060           142.9301
+
+  Moment summary (matched days):
+        var_Q          skew_Q          ...    Pi_4             vrp        
+         mean     std    mean     std  ...    mean     std    mean     std
+venue                                  ...                                
+CME    0.0496  0.0293 -1.0032  0.5131  ...  0.0291  0.0366  0.0119  0.0269
+DER    0.0531  0.0325 -0.9897  0.5162  ...  0.0324  0.0485  0.0153  0.0289
+
+[2 rows x 14 columns]
+  [checkpoint] CL20 matched-day decomposition (headline): cyl_decomposition_matched.csv (1.5 KB)
+  [checkpoint] kappa-bound sensitivity: kappa_sensitivity.csv (1.1 KB)
+  [checkpoint] CME kurtosis share = 0.300
+  [checkpoint] DER kurtosis share = 0.306
+
+  [Phase 4: BKM / CL20 Decomposition] completed in 25m 53s
+
+============================================================
+  CL24 Regional Decomposition of the CL20 Bound (theta = 2)
+============================================================
+  CL20 weights (lambda_1, lambda_2, lambda_3) = (+1.000, -1.000, +1.000)
+
+  Intersected to 619 common matched days (CME 624 -> 619, DER 1317 -> 619)
+  [CME] 619 matched days; regional additivity exact
+  [DER] 619 matched days; regional additivity exact
+
+  Unconditional regional composition of the GRID-TRUNCATED bound (R in [0.40, 2.00]; NOT the Phase 4 headline lb_total):
+venue region   Pi_2    Pi_3   Pi_4  LB_region  LB_grid_total  share_of_grid_total
+  CME   down 0.0240  0.0115 0.0066     0.0420         0.0538               0.7816
+  CME center 0.0015  0.0000 0.0000     0.0015         0.0538               0.0279
+  CME     up 0.0128 -0.0044 0.0018     0.0102         0.0538               0.1904
+  CME  total 0.0383  0.0071 0.0084     0.0538         0.0538               1.0000
+  DER   down 0.0255  0.0123 0.0071     0.0449         0.0572               0.7835
+  DER center 0.0015  0.0000 0.0000     0.0015         0.0572               0.0259
+  DER     up 0.0137 -0.0047 0.0020     0.0109         0.0572               0.1907
+  DER  total 0.0406  0.0075 0.0091     0.0572         0.0572               1.0000
+
+  Grid-route vs spanning-route truncation loss:
+venue  n_days  mean_lb_grid_total  mean_lb_spanning_total  mean_truncation_gap  pct_truncation_gap
+  CME     619              0.0538                  0.0970               0.0432             44.5589
+  DER     619              0.0572                  0.1056               0.0484             45.8050
+
+  Regional LB wedge (DER - CME), NW(27):
+region    wedge   t_stat stars  n_days
+  down  0.00281  6.14567   ***     619
+center -0.00002 -3.20968   ***     619
+    up  0.00067  7.22144   ***     619
+ total  0.00347  6.41321   ***     619
+  [checkpoint] CL24 regional table: cl24_regional.csv (4.6 KB)
+  [checkpoint] CL24 regional wedge: cl24_regional_wedge.csv (1.5 KB)
+  [checkpoint] LB wedge   down: +0.00281 (t = +6.15)***
+  [checkpoint] LB wedge center: -0.00002 (t = -3.21)***
+  [checkpoint] LB wedge     up: +0.00067 (t = +7.22)***
+  [checkpoint] LB wedge  total: +0.00347 (t = +6.41)***
 
 ======================================================================
   PIPELINE SUMMARY
@@ -721,8 +840,8 @@ venue tercile  curv_enh  curv_kde  curv_delta  curv_sign_agrees
   Phase 3b: Kernel Bootstrap (heavy)                  OK 3h 56m 12s
   Phase 3c: Joint Regime Test                         OK       0.0s
   Phase 3d: Kernel Robustness (KDE tilt, appx)        OK      21.6s
-  Phase 4: BKM / CL20 Decomposition                   OK    34m 48s
-  Phase 4b: CL24 Regional Decomposition               OK       1.5s
+  Phase 4: BKM / CL20 Decomposition                   OK    25m 53s
+  Phase 4b: CL24 Regional Decomposition               OK       0.5s
   Phase 5: Cross-Venue Analysis                       OK      12.7s
   Phase 5b: Friction-Proxy Regressions                OK       0.5s
   Phase 5c: Inverse-Contract Extension                OK       0.9s

@@ -225,19 +225,20 @@ def run_phase4():
     print(kappa_sens.round(4).to_string(index=False))
     _plot_kappa_sensitivity(kappa_sens)
 
-    # Step 6: moment summary
-    summary = premia_df.groupby("venue").agg({
+    # Step 6: moment summary (matched days — headline convention: every
+    # cross-venue descriptive table uses the intersected sample)
+    summary = premia_matched.groupby("venue").agg({
         "var_Q": ["mean", "std"], "skew_Q": ["mean", "std"], "kurt_Q": ["mean", "std"],
         "Pi_2": ["mean", "std"], "Pi_3": ["mean", "std"], "Pi_4": ["mean", "std"],
         "vrp": ["mean", "std"],
     }).round(4)
     summary.to_csv(TAB_DIR / "moment_summary.csv")
-    print(f"\n  Moment summary:\n{summary}")
+    print(f"\n  Moment summary (matched days):\n{summary}")
 
     # Step 7: figures
     _plot_rn_moments_timeseries(bkm_all)
     _plot_cumulant_contributions_ts(premia_df)
-    _plot_contributions_boxplot(premia_df)
+    _plot_contributions_boxplot(premia_matched)
     _plot_lb_decomposition_bars(decomp_matched) 
     _plot_moment_cross_venue_scatter(bkm_all)
     _plot_vrp_timeseries(premia_df)

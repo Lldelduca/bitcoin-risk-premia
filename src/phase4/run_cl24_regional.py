@@ -168,7 +168,7 @@ def run_cl24_regional():
     Z["tercile"] = pd.qcut(Z["Z_IVS_1"], q=3, labels=["low", "mid", "high"])
     terc_map = Z.set_index("date")["tercile"]
 
-    per_venue = {}
+    per_venue_raw = {}
     for venue in ["CME", "DER"]:
         df = pd.read_parquet(DATA_P1 / f"rnd_{venue}_densities.parquet")
         df["date"] = pd.to_datetime(df["date"])
@@ -180,15 +180,26 @@ def run_cl24_regional():
             if m > 0:
                 dates.append(row["date"])
                 rnds.append(q / m)
-        dates = pd.DatetimeIndex(dates)
-        prem = compute_regional_premia(np.stack(rnds), R_grid, lam)
+        per_venue_raw[venue] = (pd.DatetimeIndex(dates), np.stack(rnds))
+
+    # Cross-venue date intersection
+    common = per_venue_raw["CME"][0].intersection(per_venue_raw["DER"][0])
+    print(f"\n  Intersected to {len(common)} common matched days "
+          f"(CME {len(per_venue_raw['CME'][0])} -> {len(common)}, "
+          f"DER {len(per_venue_raw['DER'][0])} -> {len(common)})")
+
+    per_venue = {}
+    for venue, (dates, Q) in per_venue_raw.items():
+        mask = dates.isin(common)
+        dates_m, Q_m = dates[mask], Q[mask]
+        prem = compute_regional_premia(Q_m, R_grid, lam)
         # additivity: regions must sum to the untruncated total, exactly
         for k in (2, 3, 4):
             err = np.max(np.abs(prem[("total", k)]
                                 - sum(prem[(nm, k)] for nm in REGION_NAMES)))
             assert err < 1e-10, f"{venue} k={k} additivity violated ({err:.2e})"
-        per_venue[venue] = (dates, prem)
-        print(f"  [{venue}] {len(dates)} days; regional additivity exact")
+        per_venue[venue] = (dates_m, prem)
+        print(f"  [{venue}] {len(dates_m)} matched days; regional additivity exact")
 
     table = regional_table(per_venue, terc_map, R_grid)
     out1 = TAB_DIR / "cl24_regional.csv"
