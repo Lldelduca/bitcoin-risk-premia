@@ -66,7 +66,7 @@ def run_kde_tilt_robustness():
             res = estimate_conditional_kernel(
                 R_GRID, arnds, p_phys, aZ, venue=venue,
                 spec_name=f"crypto_{pname}",
-                theta0=theta0 if pname == "kde" else theta0,
+                theta0=theta0,
                 verbose=True)
             terc = evaluate_kernel_at_terciles(
                 res, R_GRID, aZ, tercile_labels=labels, p_phys=p_phys)

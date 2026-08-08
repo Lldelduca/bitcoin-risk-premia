@@ -8,7 +8,7 @@ valid under weak dependence.
 """
 
 import numpy as np
-from config import get_seed
+from src.config import get_seed
 
 def circular_block_indices(n: int, block_length: int, rng) -> np.ndarray:
     """Returns n resampled indices formed from circular contiguous blocks."""

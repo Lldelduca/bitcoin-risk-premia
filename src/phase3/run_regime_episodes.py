@@ -132,8 +132,6 @@ def _affine_weights(Z_target: np.ndarray, Z_basis: np.ndarray):
     return w, resid, (resid / scale if scale > 1e-12 else np.nan)
 
 
-# ----------------------------------------------------------------------
-
 def run_regime_episodes(spec_name: str = SPEC, ci: float = CI):
     data_p3 = get_path("data_phase3")
     tab_dir = get_path("results_phase3") / "tables"
@@ -185,6 +183,25 @@ def run_regime_episodes(spec_name: str = SPEC, ci: float = CI):
                 print(f"  [{venue}] draws lack {missing}; intervals skipped.")
                 draws = None
 
+        # Exact path
+        Theta = None
+        if draws is not None and "theta" in draws.columns:
+            try:
+                Theta = np.stack([np.asarray(t, dtype=float)
+                                  for t in draws["theta"].to_numpy()])
+                if Theta.shape[1] != 3 * (1 + n_Z):
+                    print(f"  [{venue}] stored theta length {Theta.shape[1]} "
+                          f"!= expected {3 * (1 + n_Z)}; "
+                          f"falling back to affine recombination.")
+                    Theta = None
+            except Exception as e:
+                print(f"  [{venue}] could not stack stored theta ({e}); "
+                      f"falling back to affine recombination.")
+                Theta = None
+        if Theta is not None:
+            print(f"  [{venue}] exact per-replicate theta available "
+                  f"(B = {Theta.shape[0]}); intervals are exact.")
+
         # Tercile-mean states form the affine basis used for interval construction.
         Z_basis, basis_ok = [], True
         for g in TERCILES:
@@ -215,9 +232,29 @@ def run_regime_episodes(spec_name: str = SPEC, ci: float = CI):
             for k, col in enumerate(z_cols):
                 row[f"Zbar_{col}"] = float(Z_ep[k])
 
-            # Bootstrap interval by affine recombination of the tercile draws.
-            if draws is not None and Z_basis is not None:
+            # Bootstrap intervals
+            if Theta is not None:
+                block = 1 + n_Z
+                b_rep = Theta[:, 0] + Theta[:, 1:block] @ Z_ep
+                c_rep = Theta[:, block] + Theta[:, block + 1:2 * block] @ Z_ep
+                d_rep = (Theta[:, 2 * block]
+                         + Theta[:, 2 * block + 1:3 * block] @ Z_ep)
+                row["interval_method"] = "exact_theta"
+                row["affine_resid"] = 0.0
+                row["affine_resid_rel"] = 0.0
+                for coef, rep in (("b", b_rep), ("c", c_rep), ("d", d_rep)):
+                    lo, hi = np.percentile(
+                        rep, [100 * (1 - ci) / 2, 100 * (1 + ci) / 2])
+                    row[f"{coef}_lo"], row[f"{coef}_hi"] = float(lo), float(hi)
+                rep_c = 2.0 * c_rep + 6.0 * d_rep
+                lo, hi = np.percentile(
+                    rep_c, [100 * (1 - ci) / 2, 100 * (1 + ci) / 2])
+                row["curv_lo"], row["curv_hi"] = float(lo), float(hi)
+                row["B_effective"] = int(Theta.shape[0])
+                rep_store[(venue, name)] = rep_c
+            elif draws is not None and Z_basis is not None:
                 w, resid, rel = _affine_weights(Z_ep, Z_basis)
+                row["interval_method"] = "affine"
                 row["affine_resid"] = resid
                 row["affine_resid_rel"] = rel
                 for coef in ("b", "c", "d"):
@@ -236,10 +273,13 @@ def run_regime_episodes(spec_name: str = SPEC, ci: float = CI):
 
             rows.append(row)
             if "curv_lo" in row:
+                tag = row.get("interval_method", "affine")
+                extra = ("" if tag == "exact_theta" else
+                         f", affine resid = {row['affine_resid']:.3f}, "
+                         f"rel = {row['affine_resid_rel']:.3f}")
                 print(f"    {name:8s}: curvature at money = {curv:+.3f} "
                       f"[{row['curv_lo']:+.3f}, {row['curv_hi']:+.3f}]   "
-                      f"(affine resid = {row['affine_resid']:.3f}, "
-                      f"rel = {row['affine_resid_rel']:.3f})")
+                      f"({tag}{extra})")
             else:
                 print(f"    {name:8s}: curvature at money = {curv:+.3f}   "
                       f"(no draws available; point estimate only)")
@@ -301,9 +341,11 @@ def run_regime_episodes(spec_name: str = SPEC, ci: float = CI):
 
     print(f"\n  [checkpoint] Saved: {path1}")
     print(f"  [checkpoint] Saved: {path2}")
-    print("\n  NOTE: point estimates are exact evaluations of the fitted theta. Intervals "
-          "rely on the affine recombination described in the module docstring; inspect "
-          "affine_resid_rel before quoting them.")
+    print("\n  NOTE: point estimates are exact evaluations of the fitted theta. "
+          "Intervals marked 'exact_theta' are exact per-replicate evaluations of "
+          "the stored bootstrap thetas; intervals marked 'affine' rely on the "
+          "recombination described in the module docstring — inspect "
+          "affine_resid_rel before quoting those.")
 
     return out, contrasts
 

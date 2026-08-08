@@ -113,6 +113,55 @@ def _objective(theta, R_grid, q_obs_list, p_phys, Z_matrix, n_Z):
     kl = np.where(np.isfinite(kl) & ~bad, kl, 1e10)
     return float(kl.mean())
 
+def _objective_and_grad(theta, R_grid, q_obs_list, p_phys, Z_matrix, n_Z, _R2, _R3):
+
+    Q = q_obs_list if isinstance(q_obs_list, np.ndarray) else np.stack(q_obs_list)
+    T = Q.shape[0]
+    block = 1 + n_Z
+    b0, b1 = theta[0], theta[1:block]
+    c0, c1 = theta[block], theta[block+1:2*block]
+    d0, d1 = theta[2*block], theta[2*block+1:3*block]
+
+    b_t = b0 + Z_matrix @ b1
+    c_t = c0 + Z_matrix @ c1
+    d_t = d0 + Z_matrix @ d1
+
+    log_m = (b_t[:, None] * R_grid[None, :]
+             + c_t[:, None] * _R2[None, :]
+             + d_t[:, None] * _R3[None, :])
+
+    log_m_max = log_m.max(axis=1, keepdims=True)
+    unnorm = p_phys[None, :] * np.exp(log_m - log_m_max)
+    Z_val = np.trapezoid(unnorm, R_grid, axis=1)
+    bad = Z_val <= 0
+    log_Z = np.log(np.where(bad, 1.0, Z_val)) + log_m_max[:, 0]
+
+    ln_p = np.log(np.maximum(p_phys, 1e-300))
+    integrand = Q * (ln_p[None, :] + log_m)
+    kl = -np.trapezoid(integrand, R_grid, axis=1) + log_Z
+    kl = np.where(np.isfinite(kl) & ~bad, kl, 1e10)
+    obj = float(kl.mean())
+
+    # --- Gradient ---
+    q_model = unnorm / np.where(bad, 1.0, Z_val)[:, None]
+    diff = q_model - Q                                       # (T, G)
+    diff[bad] = 0.0
+
+    I1 = np.trapezoid(diff * R_grid[None, :], R_grid, axis=1)  # (T,)
+    I2 = np.trapezoid(diff * _R2[None, :], R_grid, axis=1)
+    I3 = np.trapezoid(diff * _R3[None, :], R_grid, axis=1)
+
+    inv_T = 1.0 / T
+    grad = np.empty_like(theta)
+    grad[0]               = inv_T * I1.sum()
+    grad[1:block]         = inv_T * (Z_matrix.T @ I1)
+    grad[block]           = inv_T * I2.sum()
+    grad[block+1:2*block] = inv_T * (Z_matrix.T @ I2)
+    grad[2*block]         = inv_T * I3.sum()
+    grad[2*block+1:]      = inv_T * (Z_matrix.T @ I3)
+
+    return obj, grad
+
 def estimate_conditional_kernel(
     R_grid: np.ndarray, q_obs_list: list, p_phys: np.ndarray, Z_matrix: np.ndarray, venue: str = "unknown",
     spec_name: str = "unknown", max_iter: int = 20000, method: str = "L-BFGS-B",
@@ -142,7 +191,14 @@ def estimate_conditional_kernel(
     elif verbose:
         print(f"    Using warm-start initialization")
 
-    result = minimize(_objective, theta0, args=(R_grid, q_obs_list, p_phys, Z_matrix, n_Z), method=method,
+    R2 = R_grid ** 2
+    R3 = R_grid ** 3
+    Q_stack = np.stack(q_obs_list) if not isinstance(q_obs_list, np.ndarray) else q_obs_list
+
+    result = minimize(
+        _objective_and_grad, theta0,
+        args=(R_grid, Q_stack, p_phys, Z_matrix, n_Z, R2, R3),
+        method=method, jac=True,
         options={"maxiter": max_iter, "disp": False, "ftol": 1e-10, "gtol": 1e-8})
 
     hess_inv = None

@@ -473,6 +473,235 @@ venue  H_point  peak_R  trough_R  H_boot_mean   ci_lo  ci_hi  p_monotone  B_effe
   [checkpoint] CME BVRP (enhanced): -0.00483 [-0.02213, +0.00872]  down/mid/up = -0.00076/-0.00050/-0.00357
   [checkpoint] DER BVRP (enhanced): -0.00261 [-0.02067, +0.01080]  down/mid/up = +0.00017/-0.00052/-0.00227
 
+============================================================
+  Phase 3: Conditional Pricing Kernel Estimation
+============================================================
+  max_iter = 20000, workers = 6
+
+  Loading Phase 2 physical density...
+  Physical density integral = 1.0000
+
+  Loading daily RNDs...
+  [CME] Loaded 624 daily RNDs at tau=27d
+  [DER] Loaded 1317 daily RNDs at tau=27d
+  Intersected to 619 common matched days (CME 624 -> 619, DER 1317 -> 619)
+  Loaded full-sample Z_IVS_1 tercile labels: 772 days, counts = {'low': 258, 'mid': 257, 'high': 257}
+  Loaded macro: Z shape (772, 4), cols ['vix', 'baa_spread', 'dgs2', 'dxy']
+  Loaded crypto: Z shape (772, 3), cols ['Z_IVS_1', 'rv', 'fng']
+  Loaded full: Z shape (772, 7), cols ['vix', 'baa_spread', 'dgs2', 'dxy', 'Z_IVS_1', 'rv', 'fng']
+
+  Building estimation jobs...
+    [CME|macro] Aligned: 619 days, n_Z=4
+    [DER|macro] Aligned: 619 days, n_Z=4
+    [CME|crypto] Aligned: 619 days, n_Z=3
+    [DER|crypto] Aligned: 619 days, n_Z=3
+    [CME|full] Aligned: 619 days, n_Z=7
+    [DER|full] Aligned: 619 days, n_Z=7
+
+  Launching 6 estimations across 6 workers...
+    Estimating: venue=CME, spec=macro, T=619, n_Z=4, n_params=15
+    Using default initialization
+    Estimating: venue=DER, spec=macro, T=619, n_Z=4, n_params=15
+    Using default initialization
+    Estimating: venue=CME, spec=crypto, T=619, n_Z=3, n_params=12
+    Using default initialization
+    Estimating: venue=DER, spec=crypto, T=619, n_Z=3, n_params=12
+    Using default initialization
+    Estimating: venue=CME, spec=full, T=619, n_Z=7, n_params=24
+    Using default initialization
+    Estimating: venue=DER, spec=full, T=619, n_Z=7, n_params=24
+    Using default initialization
+    Converged: True, KL total=-174.0386, KL mean=-0.281161
+    Final |grad|_inf (per-day scale) = 3.97e-06
+    Optimizer status=0, message=CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH
+
+  [CME_crypto] Converged: True, KL mean=-0.281161
+    [CME_crypto] |grad|_inf (per-day) = 3.97e-06, optimizer status=0, message=CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH
+    [CME_crypto] tercile low: ∫p·m = 1.0000, argmax log m at R = 0.89
+    [CME_crypto] tercile mid: ∫p·m = 1.0000, argmax log m at R = 0.84
+    [CME_crypto] tercile high: ∫p·m = 1.0000, argmax log m at R = 2.00
+    Converged: True, KL total=-155.5751, KL mean=-0.251333
+    Final |grad|_inf (per-day scale) = 1.08e-05
+    Optimizer status=0, message=CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH
+
+  [DER_crypto] Converged: True, KL mean=-0.251333
+    [DER_crypto] |grad|_inf (per-day) = 1.08e-05, optimizer status=0, message=CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH
+    [DER_crypto] tercile low: ∫p·m = 1.0000, argmax log m at R = 0.87
+    [DER_crypto] tercile mid: ∫p·m = 1.0000, argmax log m at R = 2.00
+    [DER_crypto] tercile high: ∫p·m = 1.0000, argmax log m at R = 2.00
+    Converged: True, KL total=-171.8916, KL mean=-0.277692
+    Final |grad|_inf (per-day scale) = 1.50e-06
+    Optimizer status=0, message=CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH
+
+  [CME_macro] Converged: True, KL mean=-0.277692
+    [CME_macro] |grad|_inf (per-day) = 1.50e-06, optimizer status=0, message=CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH
+    [CME_macro] tercile low: ∫p·m = 1.0000, argmax log m at R = 0.93
+    [CME_macro] tercile mid: ∫p·m = 1.0000, argmax log m at R = 0.78
+    [CME_macro] tercile high: ∫p·m = 1.0000, argmax log m at R = 2.00
+    Converged: True, KL total=-154.7014, KL mean=-0.249922
+    Final |grad|_inf (per-day scale) = 2.58e-06
+    Optimizer status=0, message=CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH
+
+  [DER_macro] Converged: True, KL mean=-0.249922
+    [DER_macro] |grad|_inf (per-day) = 2.58e-06, optimizer status=0, message=CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH
+    [DER_macro] tercile low: ∫p·m = 1.0000, argmax log m at R = 0.92
+    [DER_macro] tercile mid: ∫p·m = 1.0000, argmax log m at R = 0.73
+    [DER_macro] tercile high: ∫p·m = 1.0000, argmax log m at R = 2.00
+    Converged: True, KL total=-161.3029, KL mean=-0.260586
+    Final |grad|_inf (per-day scale) = 3.14e-06
+    Optimizer status=0, message=CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH
+
+  [DER_full] Converged: True, KL mean=-0.260586
+    [DER_full] |grad|_inf (per-day) = 3.14e-06, optimizer status=0, message=CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH
+    [DER_full] tercile low: ∫p·m = 1.0000, argmax log m at R = 0.94
+    [DER_full] tercile mid: ∫p·m = 1.0000, argmax log m at R = 0.81
+    [DER_full] tercile high: ∫p·m = 1.0000, argmax log m at R = 2.00
+    Converged: True, KL total=-178.7115, KL mean=-0.288710
+    Final |grad|_inf (per-day scale) = 3.34e-05
+    Optimizer status=0, message=CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH
+
+  [CME_full] Converged: True, KL mean=-0.288710
+    [CME_full] |grad|_inf (per-day) = 3.34e-05, optimizer status=0, message=CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH
+    [CME_full] tercile low: ∫p·m = 1.0000, argmax log m at R = 0.95
+    [CME_full] tercile mid: ∫p·m = 1.0000, argmax log m at R = 0.85
+    [CME_full] tercile high: ∫p·m = 1.0000, argmax log m at R = 2.00
+
+  Generating figures...
+
+  Computing unconditional MFK...
+  MFK over 619 matched days (95% block-bootstrap bands, block=27, B=1000).
+
+  [checkpoint] CME kernel (crypto): phase3_CME_crypto.npz (30.6 KB)
+  [checkpoint] CME theta: 12 params ((b,c,d) parameterization)
+  [checkpoint] DER kernel (crypto): phase3_DER_crypto.npz (30.6 KB)
+  [checkpoint] DER theta: 12 params ((b,c,d) parameterization)
+  [checkpoint] MFK (bootstrap bands): mfk_unconditional.npz (40.5 KB)
+
+  [Phase 3: Conditional Pricing Kernel] completed in 4m 15s
+
+============================================================
+  Phase 3 Bootstrap: Tercile Kernel Coefficient Inference
+  spec = crypto, B = 1000, block = 27, workers = 8
+============================================================
+  [CME] Loaded 624 daily RNDs at tau=27d
+  [DER] Loaded 1317 daily RNDs at tau=27d
+  Intersected to 619 common matched days (CME 624 -> 619, DER 1317 -> 619)
+
+  Intersected to 619 common matched days (CME 624 -> 619, DER 1317 -> 619)
+
+  [CME] Preparing data...
+  [CME] 619 aligned days, n_Z = 3
+    tercile 'low': 223 days (full-sample Z_IVS_1 labels)
+    tercile 'mid': 191 days (full-sample Z_IVS_1 labels)
+    tercile 'high': 205 days (full-sample Z_IVS_1 labels)
+  [CME] Running 1000 replicates...
+  [CME] 1000/1000 replicates returned, 1000 flagged converged
+
+  [DER] Preparing data...
+  [DER] 619 aligned days, n_Z = 3
+    tercile 'low': 223 days (full-sample Z_IVS_1 labels)
+    tercile 'mid': 191 days (full-sample Z_IVS_1 labels)
+    tercile 'high': 205 days (full-sample Z_IVS_1 labels)
+  [DER] Running 1000 replicates...
+  [DER] 1000/1000 replicates returned, 1000 flagged converged
+
+  Curvature coefficient c by tercile (point [95% CI], P(c<0)):
+     CME  low: -17.188 [-26.618, -12.277]  P(c<0) = 1.000
+     CME  mid: -11.898 [-18.122, -7.243]  P(c<0) = 1.000
+     CME high: -9.561 [-15.477, -2.890]  P(c<0) = 0.994
+     DER  low: -16.603 [-24.275, -12.297]  P(c<0) = 1.000
+     DER  mid: -11.523 [-16.567, -7.533]  P(c<0) = 1.000
+     DER high: -8.588 [-13.177, -2.366]  P(c<0) = 0.991
+  [checkpoint] kernel bootstrap CIs: phase3_bootstrap_ci_crypto.csv (1.9 KB)
+     CME  low: c = -17.188 [-26.618, -12.277]  P(c<0) = 1.000
+     CME  mid: c = -11.898 [-18.122, -7.243]  P(c<0) = 1.000
+     CME high: c = -9.561 [-15.477, -2.890]  P(c<0) = 0.994
+     DER  low: c = -16.603 [-24.275, -12.297]  P(c<0) = 1.000
+     DER  mid: c = -11.523 [-16.567, -7.533]  P(c<0) = 1.000
+     DER high: c = -8.588 [-13.177, -2.366]  P(c<0) = 0.991
+
+  [Phase 3b: Kernel Bootstrap (heavy)] completed in 3h 56m 12s
+
+================================================================
+  Joint bootstrap test of kernel regime-dependence (low vs high)
+  spec = crypto; reads existing 4b draws (no re-estimation)
+================================================================
+
+  [CME]  (B = 1000 converged replicates)
+    (A) JOINT H0: (b,c,d)_low = (b,c,d)_high
+        Wald = 18.88,  bootstrap p = 0.0190  **
+        point vector diff: db=+12.882, dc=-7.627, dd=+0.912
+        replicates preserving full-vector ordering: 91.7%
+    (B) per-coefficient low - high [95% CI], P(diff<0):
+        b: +12.882 [+7.450, +30.250]  P<0 = 0.000
+        c: -7.627 [-20.020, -2.867]  P<0 = 0.994
+        d: +0.912 [-0.664, +3.745]  P<0 = 0.083
+    (C) curvature at money (2c+6d|R=1), low - high: -9.784 [-20.118, -7.450]  P<0 = 1.000
+
+  [DER]  (B = 1000 converged replicates)
+    (A) JOINT H0: (b,c,d)_low = (b,c,d)_high
+        Wald = 10.66,  bootstrap p = 0.0450  **
+        point vector diff: db=+13.079, dc=-8.015, dd=+1.087
+        replicates preserving full-vector ordering: 97.5%
+    (B) per-coefficient low - high [95% CI], P(diff<0):
+        b: +13.079 [+8.387, +29.312]  P<0 = 0.000
+        c: -8.015 [-19.289, -4.215]  P<0 = 0.999
+        d: +1.087 [+0.007, +3.649]  P<0 = 0.025
+    (C) curvature at money (2c+6d|R=1), low - high: -9.506 [-19.445, -7.089]  P<0 = 1.000
+
+  [checkpoint] Joint regime test: joint_regime_test_crypto.csv (355 B)
+  [checkpoint] CME: Wald = 18.88, p = 0.0190
+  [checkpoint] DER: Wald = 10.66, p = 0.0450
+
+
+============================================================
+  Phase 3 robustness: KDE+GPD tilting density (crypto spec)
+============================================================
+  [CME] Loaded 624 daily RNDs at tau=27d
+  [DER] Loaded 1317 daily RNDs at tau=27d
+  Intersected to 619 common matched days (CME 624 -> 619, DER 1317 -> 619)
+  Intersected to 619 common matched days (CME 624 -> 619, DER 1317 -> 619)
+
+  [CME | tilt = enhanced]
+    Estimating: venue=CME, spec=crypto_enhanced, T=619, n_Z=3, n_params=12
+    Using warm-start initialization
+    Converged: True, KL total=-174.0386, KL mean=-0.281161
+    Final |grad|_inf (per-day scale) = 5.55e-06
+    Optimizer status=0, message=CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH
+
+  [CME | tilt = kde]
+    Estimating: venue=CME, spec=crypto_kde, T=619, n_Z=3, n_params=12
+    Using warm-start initialization
+    Converged: True, KL total=-188.7288, KL mean=-0.304893
+    Final |grad|_inf (per-day scale) = 3.46e-06
+    Optimizer status=0, message=CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH
+
+  [DER | tilt = enhanced]
+    Estimating: venue=DER, spec=crypto_enhanced, T=619, n_Z=3, n_params=12
+    Using warm-start initialization
+    Converged: True, KL total=-155.5751, KL mean=-0.251333
+    Final |grad|_inf (per-day scale) = 3.40e-06
+    Optimizer status=0, message=CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH
+
+  [DER | tilt = kde]
+    Estimating: venue=DER, spec=crypto_kde, T=619, n_Z=3, n_params=12
+    Using warm-start initialization
+    Converged: True, KL total=-169.2586, KL mean=-0.273439
+    Final |grad|_inf (per-day scale) = 1.87e-05
+    Optimizer status=0, message=CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH
+
+  Curvature at the money by tilting density:
+venue tercile  curv_enh  curv_kde  curv_delta  curv_sign_agrees
+  CME     low    -8.767    -8.869      -0.102              True
+  CME     mid    -5.139    -4.406       0.733              True
+  CME    high     1.017     2.840       1.823              True
+  DER     low    -7.087    -7.105      -0.017              True
+  DER     mid    -3.593    -2.753       0.840              True
+  DER    high     2.418     4.401       1.983              True
+
+  [checkpoint] KDE-tilt robustness: kde_tilt_robustness.csv (1.6 KB)
+  [checkpoint] curvature-at-money sign agreement: 6/6 venue-tercile cells; max |delta| = 1.983
+
 
 ======================================================================
   PIPELINE SUMMARY
@@ -488,10 +717,10 @@ venue  H_point  peak_R  trough_R  H_boot_mean   ci_lo  ci_hi  p_monotone  B_effe
   Phase 2c: Grid-Sensitivity Diagnostic (appx)        OK       5.5s
   Phase 2d: Kernel Hump Significance Test             OK     6m 35s
   Phase 2e: BVRP State Decomposition                  OK     6m 30s
-  Phase 3: Conditional Pricing Kernel                 OK     8m 17s
-  Phase 3b: Kernel Bootstrap (heavy)                  OK 16h 21m 24s
+  Phase 3: Conditional Pricing Kernel                 OK     4m 15s
+  Phase 3b: Kernel Bootstrap (heavy)                  OK 3h 56m 12s
   Phase 3c: Joint Regime Test                         OK       0.0s
-  Phase 3d: Kernel Robustness (KDE tilt, appx)        OK     3m 41s
+  Phase 3d: Kernel Robustness (KDE tilt, appx)        OK      21.6s
   Phase 4: BKM / CL20 Decomposition                   OK    34m 48s
   Phase 4b: CL24 Regional Decomposition               OK       1.5s
   Phase 5: Cross-Venue Analysis                       OK      12.7s

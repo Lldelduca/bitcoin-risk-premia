@@ -63,7 +63,8 @@ def _one_replicate(job):
         max_iter=MAX_ITER_REPLICATE, theta0=theta_full.copy(), verbose=False,
     )
     row = {"seed": seed, "converged": bool(res.converged),
-           "kl_mean": float(res.kl_mean)}
+           "kl_mean": float(res.kl_mean),
+           "theta": [float(x) for x in res.theta]}
     for name, Z_vec in tercile_states.items():
         b, c, d = coefficients_at(res.theta, Z_vec, n_Z)
         row[f"b_{name}"] = float(b)
@@ -157,13 +158,18 @@ def run_bootstrap(venues, spec_name, B, workers, ci=0.95):
         print(f"  [{venue}] {n_ok}/{B} replicates returned, "
               f"{n_conv} flagged converged")
 
+        conv = draws[draws["converged"]] if "converged" in draws.columns else draws
+        if len(conv) < n_ok:
+            print(f"  [{venue}] CI summary uses the {len(conv)} converged "
+                  f"replicates ({n_ok - len(conv)} excluded)")
+
         # Point estimates from the full-sample theta at the same fixed states
         alpha = (1.0 - ci) / 2.0
         for name, Z_vec in tercile_states.items():
             b_pt, c_pt, d_pt = coefficients_at(theta_full, Z_vec, Z.shape[1])
             for coef, pt in [("b", b_pt), ("c", c_pt), ("d", d_pt)]:
                 col = f"{coef}_{name}"
-                v = draws[col].dropna().values
+                v = conv[col].dropna().values
                 summary_rows.append({
                     "venue": venue, "spec": spec_name, "tercile": name,
                     "coef": coef, "point": float(pt),
