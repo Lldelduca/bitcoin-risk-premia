@@ -139,8 +139,8 @@ def run_friction_regressions():
                     "coef": res.params[j], "se": res.bse[j],
                     "t_stat": res.tvalues[j], "p_value": res.pvalues[j],
                     "stars": ("***" if res.pvalues[j] < 0.01 else
-                              "**" if res.pvalues[j] < 0.01 else
-                              "*" if res.pvalues[j] < 0.05 else ""),
+                              "**" if res.pvalues[j] < 0.05 else
+                              "*" if res.pvalues[j] < 0.10 else ""),
                     "r2": r2, "n": n,
                 })
             if spec_name == "joint":

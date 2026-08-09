@@ -65,7 +65,9 @@ def run_phase5():
               f"peak Ψ = {data['mean_psi'].max():.4f}, "
               f"min Ψ = {data['mean_psi'].min():.4f}")
 
-    psi_df.to_parquet(DATA_P5 / "conditional_mfk.parquet")
+    psi_save = psi_df.copy()
+    psi_save.columns = [str(c) for c in psi_save.columns]
+    psi_save.to_parquet(DATA_P5 / "conditional_mfk.parquet")
 
     _plot_conditional_mfk(mfk_results)
 
