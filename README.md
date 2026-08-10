@@ -165,26 +165,13 @@ flowchart TD
     classDef decision fill:#F5B7B1,stroke:#943126,color:#641E16
 ```
 
-## Key Results
-
-| Finding | CME | Deribit |
-|:--------|:---:|:-------:|
-| Hump test (p-value) | 0.014 | 0.034 |
-| Kurtosis share of CL20 bound | 30.0% | 30.6% |
-| Joint Wald regime test (p) | 0.019 | 0.045 |
-| Variance wedge (t-stat) | — | 8.56 |
-| Skewness wedge (t-stat) | — | 3.42 |
-| Kurtosis wedge (t-stat) | — | 3.14 |
-| Inverse-contract sign agreement | 0 / 3 orders | |
-| Friction proxies significant | None (min p = 0.166) | |
-
 ## Usage
 
 ```bash
-# Full pipeline (≈ 4 hours with bootstrap)
+# Full pipeline
 python main.py
 
-# Skip bootstrap for fast iteration (≈ 20 minutes)
+# Skip bootstrap for fast iteration
 python main.py --skip-bootstrap --skip-diagnostics
 
 # Resume from Phase 3 onward
