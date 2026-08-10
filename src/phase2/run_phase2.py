@@ -47,7 +47,7 @@ ESTIMATOR_FNS = {
 }
 ESTIMATOR_LABELS = {
     "almeida": "Enhanced (this thesis)",
-    "vanilla": "AGMW published",
+    "vanilla": "vanilla (Almeida et al.)",
     "kde": "KDE + GPD",
 }
 

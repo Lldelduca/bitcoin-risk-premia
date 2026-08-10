@@ -169,7 +169,7 @@ def _plot_conditional_mfk(mfk_results):
             label=f"Unconditional (n={d['n_days']})")
 
     # Terciles as primary content (95% block-bootstrap bands)
-    colors = {"low": "C0", "mid": "C1", "high": "C2"}
+    colors = {"low": "C2", "mid": "C7", "high": "C3"}
     for tercile in ["low", "mid", "high"]:
         if tercile in mfk_results:
             d = mfk_results[tercile]
