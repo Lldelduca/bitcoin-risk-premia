@@ -186,6 +186,7 @@ def _plot_conditional_mfk(mfk_results):
     ax.set_ylabel(r"$\Psi(R \mid \mathrm{tercile})$")
     ax.set_title("Conditional Microstructure Friction Kernel by Volatility Tercile")
     ax.legend(fontsize=10)
+    ax.set_xlim(0.50, 1.60)
     plt.tight_layout()
     plt.savefig(FIG_DIR / "fig_mfk_conditional.png", dpi=150)
     plt.close()

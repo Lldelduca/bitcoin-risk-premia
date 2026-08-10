@@ -160,6 +160,7 @@ def run_inverse_contract():
     ax.set_title("Cross-Venue Pricing-Kernel Wedge: Mechanical vs Residual",
                  fontsize=12)
     ax.legend(frameon=False, fontsize=9, loc="best")
+    ax.set_xlim(0.50, 1.60)
     fig.tight_layout()
     fig.savefig(FIG_DIR / "fig_inverse_contract_psi.png", dpi=150)
     plt.close(fig)
