@@ -184,10 +184,6 @@ python main.py --only 5 5b 5c 5d 5e 5f 5g
 python main.py --bootstrap-B 1000 --bootstrap-workers 6
 ```
 
-## Dependencies
-
-Core scientific stack: `numpy`, `scipy`, `pandas`, `tensorly`, `statsmodels`, `matplotlib`, `seaborn`. Data retrieval: `yfinance`, `fredapi`, `aiohttp` (Deribit API). All standard `pip install` — no GPU required.
-
 ## Citation
 
 ```bibtex
