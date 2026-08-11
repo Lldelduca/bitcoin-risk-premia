@@ -11,6 +11,9 @@ Usage:
     python main.py --bootstrap-B 1000  # bootstrap replicates (default 1000)
     python main.py --bootstrap-workers 6
 
+Robustness F = S Forward Convention:
+    python main.py --forward fs --from 2d --skip 2e 4b 5b 5d 5e 5f 5g
+
 Phase dependency graph:
     0a  Data Scraping (Deribit)         (reads: Deribit API)
     0b  Data Cleaning & Auxiliary       (reads: raw CME/Deribit, FRED/yfinance)
@@ -139,6 +142,87 @@ def _check_parquet_rows(path, label="", min_rows=1):
                          f"{n} rows, expected >= {min_rows}")
     print(f"  [checkpoint] {label}: {n:,} rows")
     return n
+
+def _setup_fs_convention():
+    """
+    Override Deribit forward with spot price (F=S convention).
+    
+    Patches the cleaned Deribit parquet so that:
+      forward_price = btc_spot  (from auxiliary panel)
+      log_moneyness = log(K/S)  (recomputed from the PCP version)
+    
+    Redirects all data_phase*/results_phase* paths to _fs variants
+    so the PCP pipeline outputs are preserved untouched.
+    """
+    import src.config as cfg_module
+    cfg = cfg_module._CONFIG_CACHE
+    project_root = cfg_module.PROJECT_ROOT
+    
+    print("\n" + "=" * 70)
+    print("  F=S FORWARD CONVENTION OVERRIDE")
+    print("=" * 70)
+    
+    # --- Redirect all intermediate and results paths ---
+    redirected = []
+    for key in list(cfg['paths'].keys()):
+        val = cfg['paths'][key]
+        new_val = val
+        if val.startswith('data/phase'):
+            new_val = val.replace('data/', 'data_fs/')
+        elif val.startswith('results/'):
+            new_val = val.replace('results/', 'results_fs/')
+        if new_val != val:
+            cfg['paths'][key] = new_val
+            redirected.append((key, new_val))
+    
+    # Create all redirected directories
+    for key, val in redirected:
+        d = project_root / val
+        if d.suffix == '':  # directory path (no file extension)
+            d.mkdir(parents=True, exist_ok=True)
+        else:  # file path — create parent
+            d.parent.mkdir(parents=True, exist_ok=True)
+    
+    # --- Patch Deribit cleaned parquet ---
+    orig_der = project_root / 'data/cleaned/deribit_options_clean.parquet'
+    orig_aux = project_root / 'data/cleaned/auxiliary_panel.parquet'
+    
+    df = pd.read_parquet(orig_der)
+    df['date'] = pd.to_datetime(df['date'])
+    
+    aux = pd.read_parquet(orig_aux)
+    aux['date'] = pd.to_datetime(aux['date'])
+    spot = aux[['date', 'btc_spot']].drop_duplicates('date')
+    
+    n_before = len(df)
+    df = df.merge(spot, on='date', how='left')
+    valid = df['btc_spot'].notna()
+    
+    # Recompute: log(K/S) = log(K/F) + log(F/S) = old_kappa + log(F_PCP / S)
+    ratio = df.loc[valid, 'forward_price'] / df.loc[valid, 'btc_spot']
+    mean_basis_pct = (ratio.mean() - 1) * 100
+    
+    df.loc[valid, 'log_moneyness'] = (
+        df.loc[valid, 'log_moneyness'] + np.log(ratio)
+    )
+    df.loc[valid, 'forward_price'] = df.loc[valid, 'btc_spot']
+    df = df.drop(columns=['btc_spot'])
+    
+    # Save to FS cleaned directory
+    fs_clean_dir = project_root / 'data_fs' / 'cleaned'
+    fs_clean_dir.mkdir(parents=True, exist_ok=True)
+    fs_path = fs_clean_dir / 'deribit_options_clean.parquet'
+    df.to_parquet(fs_path, index=False)
+    
+    # Point config to the patched parquet
+    cfg['paths']['cleaned_deribit'] = 'data_fs/cleaned/deribit_options_clean.parquet'
+    
+    print(f"  Patched {valid.sum():,} / {n_before:,} Deribit rows")
+    print(f"  Mean PCP-to-spot basis removed: {mean_basis_pct:.2f}%")
+    print(f"  Patched parquet: {fs_path}")
+    print(f"  Redirected {len(redirected)} output paths to data_fs/ and results_fs/")
+    print(f"  CME and auxiliary data: unchanged (read from original paths)")
+    print("=" * 70 + "\n")
 
 
 # ---------------------------------------------------------------------------
@@ -519,6 +603,7 @@ def main():
         parser.add_argument("--bootstrap-B", type=int, default=1000)
         parser.add_argument("--bootstrap-workers", type=int, default=6)
         parser.add_argument("--continue-on-error", action="store_true")
+        parser.add_argument("--forward", choices=["pcp", "fs"], default="pcp", help="Forward convention: 'pcp' (default) or 'fs' (F=S robustness)")
         args = parser.parse_args()
 
         all_tags = [tag for tag, _, _ in PHASE_ORDER]
@@ -543,6 +628,11 @@ def main():
         print(f"#   {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".ljust(69) + "#")
         print("#" * 70)
         print(f"\n  Phases to run: {', '.join(t for t in all_tags if t in run_tags)}\n")
+
+        if args.forward == 'fs':
+            from src.config import load_config
+            load_config()
+            _setup_fs_convention()
 
         manifest = []
         t_total = time.time()
