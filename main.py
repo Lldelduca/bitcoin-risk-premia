@@ -12,7 +12,7 @@ Usage:
     python main.py --bootstrap-workers 6
 
 Robustness F = S Forward Convention:
-    python main.py --forward fs --from 2d --skip 2e 4b 5b 5d 5e 5f 5g
+    python main.py <ñ --from 2d --skip 2e 4b 5b 5d 5e 5f 5g
 
 Phase dependency graph:
     0a  Data Scraping (Deribit)         (reads: Deribit API)
